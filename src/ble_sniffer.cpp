@@ -116,12 +116,15 @@ void hidNotifyCallback(
   }
 
   if (allZero) {
-    sKeyIsDown = false;
-    // Consumer release fires immediately on TiVo key-up (natural hold/repeat timing).
-    // Keyboard releases use the sKbReleaseAt pulse timer — no action needed here.
-    hidReleaseConsumer();
-    // sLastData/sLastLen are intentionally preserved so the bounce guard below
-    // can block the rapid re-keydown the TiVo sends during auto-repeat init.
+    // Only treat as key-up when the length matches the last non-zero report.
+    // The TiVo has 32-byte keyboard characteristics that fire all-zeros constantly
+    // while consumer (4-byte) keys are held. If we let those reset sKeyIsDown the
+    // hold-repeat guard breaks, causing the second consumer characteristic (0x10)
+    // to slip through as a duplicate keydown on every single press.
+    if (length == sLastLen) {
+      sKeyIsDown = false;
+      hidReleaseConsumer();
+    }
     return;
   }
 

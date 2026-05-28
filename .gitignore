@@ -1,0 +1,16 @@
+# PlatformIO build output
+.pio/
+
+# PlatformIO IDE workspace
+.vscode/
+.idea/
+
+# macOS metadata
+.DS_Store
+
+# Windows metadata
+Thumbs.db
+Desktop.ini
+
+# Serial monitor logs
+*.log

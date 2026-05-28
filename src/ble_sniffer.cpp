@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <Preferences.h>
+#include <WiFi.h>
 #include "keymap.h"
 #include "hid_peripheral.h"
 #include "web_config.h"
@@ -100,8 +101,11 @@ static unsigned long sKbReleaseAt       = 0;      // non-zero while keyboard pul
 static unsigned long sLedOffAt          = 0;      // non-zero while LED flash is active
 static unsigned long sShieldParamsAt    = 0;      // non-zero: fire hidRequestFastParams at time
 static bool          sWasShieldConn     = false;
+static bool          sWasShieldReady    = false;  // tracks hidShieldReady() edge
+static bool          sWasWifiConn       = false;  // tracks WiFi STA connect edge
 static bool          sWebConfigStarted  = false;  // true once webConfigInit() has been called
 static unsigned long sWebReadyAt        = 0;      // non-zero: start WiFi at this millis()
+static unsigned long sWifiParamsAt      = 0;      // non-zero: re-fire fast params after WiFi up
 
 // The TiVo has two 4-byte consumer characteristics (Report IDs 0x0C and 0x10).
 // When one fires a keydown, the other simultaneously fires all-zeros (its idle value).
@@ -467,15 +471,34 @@ void setup() {
 }
 
 void loop() {
-  // If webConfigInit() was deferred (no Shield bond at boot), wait until the Shield
-  // has fully bonded — CCCD written, sShieldNegotiating=false — then add a 2 s
-  // buffer before starting WiFi.  Starting WiFi during BLE pairing disrupts the
-  // radio and causes the Shield to disconnect before bonding completes.
-  if (!sWebConfigStarted) {
-    if (!sWebReadyAt && hidShieldReady()) {
-      sWebReadyAt = millis() + 2000;
-      Serial.println("[Web] Shield fully bonded — starting WiFi in 2 s.");
+  // ---- Shield ready-state edge (CCCD written) ----
+  // Fires once when sShieldNegotiating transitions false → ready.
+  // • Schedule fast BLE params in 1 s (before WiFi starts).
+  // • If WiFi is deferred, schedule it 10 s from now so BLE params
+  //   are well established before the radio is shared with WiFi.
+  {
+    bool isReady = hidShieldReady();
+    if (isReady && !sWasShieldReady) {
+      sShieldParamsAt = millis() + 1000;   // fast params 1 s after CCCD
+      Serial.println("[HID] Shield CCCD confirmed — fast params in 1 s.");
+      if (!sWebConfigStarted && !sWebReadyAt) {
+        sWebReadyAt = millis() + 10000;    // WiFi 10 s after CCCD
+        Serial.println("[Web] Shield bonded — starting WiFi in 10 s.");
+      }
     }
+    sWasShieldReady = isReady;
+  }
+
+  // ---- Fire fast BLE params ----
+  if (sShieldParamsAt && millis() >= sShieldParamsAt) {
+    sShieldParamsAt = 0;
+    hidRequestFastParams();
+  }
+
+  // ---- Deferred WiFi startup ----
+  // webConfigInit() was skipped at boot (no Shield bond). Start it now,
+  // 10 s after CCCDs were written so BLE params are already established.
+  if (!sWebConfigStarted) {
     if (sWebReadyAt && millis() >= sWebReadyAt) {
       sWebReadyAt = 0;
       Serial.println("[Web] Starting WiFi + web config now.");
@@ -487,33 +510,37 @@ void loop() {
   // Service HTTP requests (no-op until webConfigInit has been called)
   if (sWebConfigStarted) webConfigLoop();
 
-  // Keyboard pulse-release for translated keys
+  // ---- Re-request fast params 2 s after WiFi STA connects ----
+  // WiFi coexistence can reset negotiated BLE connection parameters.
+  {
+    bool isWifi = (WiFi.status() == WL_CONNECTED);
+    if (isWifi && !sWasWifiConn) {
+      sWifiParamsAt = millis() + 2000;
+      Serial.println("[HID] WiFi up — re-requesting fast BLE params in 2 s.");
+    }
+    sWasWifiConn = isWifi;
+  }
+  if (sWifiParamsAt && millis() >= sWifiParamsAt) {
+    sWifiParamsAt = 0;
+    hidRequestFastParams();
+  }
+
+  // ---- Detect Shield connect edge (only for sWasShieldConn tracking) ----
+  {
+    bool isConn = hidPeripheralConnected();
+    sWasShieldConn = isConn;
+  }
+
+  // ---- Keyboard pulse-release for translated keys ----
   if (sKbReleaseAt && millis() >= sKbReleaseAt) {
     sKbReleaseAt = 0;
     hidReleaseKeyboard();
   }
 
-  // Activity LED off timer
+  // ---- Activity LED off timer ----
   if (sLedOffAt && millis() >= sLedOffAt) {
     sLedOffAt = 0;
     digitalWrite(LED_PIN, LED_OFF);
-  }
-
-  // Detect Shield connect edge and schedule a delayed connection-param update.
-  // We cannot call updateConnParams immediately in onConnect because Android
-  // has not finished writing CCCDs yet; 3 s gives it plenty of time.
-  {
-    bool isConn = hidPeripheralConnected();
-    if (isConn && !sWasShieldConn) {
-      sShieldParamsAt = millis() + 3000;
-    }
-    sWasShieldConn = isConn;
-  }
-
-  // Fire the delayed connection-param request
-  if (sShieldParamsAt && millis() >= sShieldParamsAt) {
-    sShieldParamsAt = 0;
-    hidRequestFastParams();
   }
 
   // Timed reconnect after TiVo disconnect

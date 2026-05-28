@@ -101,6 +101,7 @@ static unsigned long sLedOffAt          = 0;      // non-zero while LED flash is
 static unsigned long sShieldParamsAt    = 0;      // non-zero: fire hidRequestFastParams at time
 static bool          sWasShieldConn     = false;
 static bool          sWebConfigStarted  = false;  // true once webConfigInit() has been called
+static unsigned long sWebReadyAt        = 0;      // non-zero: start WiFi at this millis()
 
 // The TiVo has two 4-byte consumer characteristics (Report IDs 0x0C and 0x10).
 // When one fires a keydown, the other simultaneously fires all-zeros (its idle value).
@@ -466,12 +467,18 @@ void setup() {
 }
 
 void loop() {
-  // If webConfigInit() was deferred (no Shield bond at boot), start it now the
-  // moment the Shield first connects so WiFi doesn't compete with BLE advertising.
+  // If webConfigInit() was deferred (no Shield bond at boot), wait until the Shield
+  // has fully bonded — CCCD written, sShieldNegotiating=false — then add a 2 s
+  // buffer before starting WiFi.  Starting WiFi during BLE pairing disrupts the
+  // radio and causes the Shield to disconnect before bonding completes.
   if (!sWebConfigStarted) {
-    bool shieldJustConnected = hidPeripheralConnected();
-    if (shieldJustConnected) {
-      Serial.println("[Web] Shield connected — starting WiFi + web config.");
+    if (!sWebReadyAt && hidShieldReady()) {
+      sWebReadyAt = millis() + 2000;
+      Serial.println("[Web] Shield fully bonded — starting WiFi in 2 s.");
+    }
+    if (sWebReadyAt && millis() >= sWebReadyAt) {
+      sWebReadyAt = 0;
+      Serial.println("[Web] Starting WiFi + web config now.");
       webConfigInit();
       sWebConfigStarted = true;
     }

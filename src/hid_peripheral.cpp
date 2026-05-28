@@ -187,6 +187,10 @@ void hidPeripheralInit() {
 
 bool hidPeripheralConnected() { return sShieldConn; }
 
+// True only after Android has written CCCDs (bonding + service discovery complete).
+// WiFi must not start before this — the radio disruption disconnects the Shield.
+bool hidShieldReady() { return sShieldConn && !sShieldNegotiating; }
+
 // Returns a string token describing the current Shield connection phase.
 const char* hidGetShieldState() {
   if (sShieldConn) {

@@ -13,6 +13,10 @@ bool hidPeripheralConnected();
 // "advertising" | "adv_bonded" | "negotiating" | "ready"
 const char* hidGetShieldState();
 
+// True only when the Shield is connected AND has completed CCCD writes
+// (i.e. sShieldNegotiating is false). Safe to start WiFi at this point.
+bool hidShieldReady();
+
 // Request faster BLE connection parameters from the Shield.
 // Must be called at least 3 s after connection to avoid disrupting CCCD setup.
 void hidRequestFastParams();

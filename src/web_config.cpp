@@ -7,11 +7,13 @@
 #include <Arduino.h>
 
 // Status/action helpers defined in other translation units
-extern void   repairTiVo();
-extern void   repairShield();
-extern bool   tivoHasBond();
-extern bool   tivoIsConnected();
-extern String tivoGetAddr();
+extern void        repairTiVo();
+extern void        repairShield();
+extern bool        tivoHasBond();
+extern bool        tivoIsConnected();
+extern String      tivoGetAddr();
+extern const char* tivoGetState();
+extern const char* hidGetShieldState();
 
 static WebServer   sHttp(80);
 static Preferences sWifiPrefs;
@@ -215,6 +217,20 @@ static String staStatusBadge() {
 
 // ---- Route handlers ----
 
+// Lightweight JSON status endpoint — polled by the Devices tab every second.
+static void handleStatus() {
+  String tivoAddr   = tivoGetAddr();
+  String shieldAddr = hidGetShieldAddr();
+  String j = "{";
+  j += "\"tivo\":{\"state\":\"";   j += tivoGetState();    j += "\",\"addr\":\""; j += tivoAddr;   j += "\"},";
+  j += "\"shield\":{\"state\":\""; j += hidGetShieldState(); j += "\",\"addr\":\""; j += shieldAddr; j += "\"},";
+  j += "\"wifi\":{\"connected\":";
+  j += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
+  j += ",\"ip\":\""; j += WiFi.localIP().toString(); j += "\"}}";
+  sHttp.sendHeader("Cache-Control", "no-cache");
+  sHttp.send(200, "application/json", j);
+}
+
 static void handleRoot() {
   sLastHttpActivity = millis();  // reset AP timeout timer on every page load
 
@@ -357,65 +373,66 @@ static void handleRoot() {
   h += "</table></div>"; // close pane-map
 
   // ---- Device management ----
-  bool tivoConn  = tivoIsConnected();
-  bool tivoBond  = tivoHasBond();
-  String tivoAddr = tivoGetAddr();
-  bool shieldConn = hidPeripheralConnected();
-  String shieldAddr = hidGetShieldAddr();
+  // Status spans are populated immediately with server-side values on load,
+  // then kept live by the JS poller (no flicker on first paint).
+  {
+    const char* ts = tivoGetState();
+    const char* ss = hidGetShieldState();
+    String tivoAddr   = tivoGetAddr();
+    String shieldAddr = hidGetShieldAddr();
 
-  // TiVo status badge
-  String tivoStatus;
-  if (tivoConn)
-    tivoStatus = "<span class='ok'>&#x25CF; Connected</span>";
-  else if (tivoBond)
-    tivoStatus = "<span class='warn'>&#x25CF; Bonded &mdash; reconnecting&hellip;</span>";
-  else
-    tivoStatus = "<span class='dim'>&#x25CF; No bond &mdash; scanning</span>";
+    // Inline helper — maps state token to CSS class + text
+    auto tivoBadge = [&](const char* st) -> String {
+      if (!strcmp(st,"ready"))       return "<span class='ok'>&#x25CF; Connected &mdash; forwarding</span>";
+      if (!strcmp(st,"connecting"))  return "<span class='warn'>&#x25CF; Connecting&hellip;</span>";
+      if (!strcmp(st,"reconnecting"))return "<span class='warn'>&#x25CF; Reconnecting&hellip;</span>";
+      return "<span class='dim'>&#x25CF; Scanning for TiVo&hellip;</span>";
+    };
+    auto shieldBadge = [&](const char* st) -> String {
+      if (!strcmp(st,"ready"))       return "<span class='ok'>&#x25CF; Connected &mdash; ready</span>";
+      if (!strcmp(st,"negotiating")) return "<span class='warn'>&#x25CF; Negotiating&hellip;</span>";
+      if (!strcmp(st,"adv_bonded"))  return "<span class='warn'>&#x25CF; Bonded &mdash; re-advertising</span>";
+      return "<span class='dim'>&#x25CF; Not paired &mdash; advertising</span>";
+    };
 
-  // Shield status badge
-  String shieldStatus;
-  if (shieldConn)
-    shieldStatus = "<span class='ok'>&#x25CF; Connected</span>";
-  else if (shieldAddr.length())
-    shieldStatus = "<span class='warn'>&#x25CF; Bonded &mdash; advertising</span>";
-  else
-    shieldStatus = "<span class='dim'>&#x25CF; Not paired &mdash; advertising</span>";
+    h += "<div id='pane-devices' class='pane'>"
+         "<h2>Device Management</h2>"
+         "<div class='row'>";
 
-  h += "<div id='pane-devices' class='pane'>"
-       "<h2>Device Management</h2>"
-       "<div class='row'>";
+    // TiVo card
+    h += "<div class='card'>"
+         "<p style='font-size:1em;font-weight:600;color:#7dd3fc;margin:.1rem 0 .5rem'>TiVo Remote</p>"
+         "<p style='margin:.2rem 0' id='tivo-status'>" + tivoBadge(ts) + "</p>"
+         "<p class='note' style='margin:.3rem 0' id='tivo-addr'>";
+    if (tivoAddr.length())
+      h += "Address: <code style='color:#c4b5fd'>" + tivoAddr + "</code>";
+    h += "</p>"
+         "<p class='note' style='margin:.5rem 0 .7rem'>To re-pair: press "
+         "<strong>TiVo&nbsp;+&nbsp;Back</strong> on the remote after clicking below.</p>"
+         "<form action='/repairTivo' method='get' "
+         "onsubmit='return confirm(\"Forget TiVo bond and start scanning?\")'>"
+         "<button class='btn' style='background:#1e3a5f;color:#7dd3fc;margin-top:0'>"
+         "Forget &amp; Re-pair TiVo</button></form>"
+         "</div>";
 
-  // TiVo card
-  h += "<div class='card'>"
-       "<p style='font-size:1em;font-weight:600;color:#7dd3fc;margin:.1rem 0 .5rem'>TiVo Remote</p>"
-       "<p style='margin:.2rem 0'>" + tivoStatus + "</p>";
-  if (tivoBond)
-    h += "<p class='note' style='margin:.3rem 0'>Address: <code style='color:#c4b5fd'>"
-         + tivoAddr + "</code></p>";
-  h += "<p class='note' style='margin:.5rem 0 .7rem'>To re-pair: press "
-       "<strong>TiVo&nbsp;+&nbsp;Back</strong> on the remote after clicking below.</p>"
-       "<form action='/repairTivo' method='get' "
-       "onsubmit='return confirm(\"Forget TiVo bond and start scanning?\")'>"
-       "<button class='btn' style='background:#1e3a5f;color:#7dd3fc;margin-top:0'>"
-       "Forget &amp; Re-pair TiVo</button></form>"
-       "</div>";
+    // Shield card
+    h += "<div class='card'>"
+         "<p style='font-size:1em;font-weight:600;color:#7dd3fc;margin:.1rem 0 .5rem'>Nvidia Shield TV</p>"
+         "<p style='margin:.2rem 0' id='shield-status'>" + shieldBadge(ss) + "</p>"
+         "<p class='note' style='margin:.3rem 0' id='shield-addr'>";
+    if (shieldAddr.length())
+      h += "Address: <code style='color:#c4b5fd'>" + shieldAddr + "</code>";
+    h += "</p>"
+         "<p class='note' style='margin:.5rem 0 .7rem'>To re-pair: click below, then "
+         "go to <strong>Shield Settings &rsaquo; Remote &amp; Accessories</strong>.</p>"
+         "<form action='/repairShield' method='get' "
+         "onsubmit='return confirm(\"Forget Shield bond and re-advertise?\")'>"
+         "<button class='btn' style='background:#1e3a5f;color:#7dd3fc;margin-top:0'>"
+         "Forget &amp; Re-pair Shield</button></form>"
+         "</div>";
 
-  // Shield card
-  h += "<div class='card'>"
-       "<p style='font-size:1em;font-weight:600;color:#7dd3fc;margin:.1rem 0 .5rem'>Nvidia Shield TV</p>"
-       "<p style='margin:.2rem 0'>" + shieldStatus + "</p>";
-  if (shieldAddr.length())
-    h += "<p class='note' style='margin:.3rem 0'>Address: <code style='color:#c4b5fd'>"
-         + shieldAddr + "</code></p>";
-  h += "<p class='note' style='margin:.5rem 0 .7rem'>To re-pair: click below, then "
-       "go to <strong>Shield Settings &rsaquo; Remote &amp; Accessories</strong>.</p>"
-       "<form action='/repairShield' method='get' "
-       "onsubmit='return confirm(\"Forget Shield bond and re-advertise?\")'>"
-       "<button class='btn' style='background:#1e3a5f;color:#7dd3fc;margin-top:0'>"
-       "Forget &amp; Re-pair Shield</button></form>"
-       "</div>";
-
-  h += "</div>";  // close device .row
+    h += "</div>";  // close device .row
+  }
 
   // ---- Settings row ----
   h += "<div class='row' style='margin-top:.5rem'>";
@@ -456,29 +473,70 @@ static void handleRoot() {
 
   h += "</div>";  // close settings .row
 
-  h += "<p class='note' style='margin-top:.5rem'>&#x21BA; Status shown at page load &mdash; "
-       "<a href='/' style='color:#7dd3fc'>refresh</a> to update.</p>"
+  // Live indicator line
+  h += "<p class='note' style='margin-top:.5rem'>"
+       "<span id='poll-dot' style='color:#4ade80;font-size:.8em'>&#x25CF;</span>"
+       "<span class='dim' style='font-size:.82em'>&nbsp;Status updates live &mdash; no refresh needed</span>"
+       "</p>"
        "</div>"; // close pane-devices
 
-  // Tab-switching + KEY/CSM remap toggle JS
+  // ---- JavaScript ----
   h += "<script>"
-       // Tab switching (localStorage-persistent)
+       // ---- BLE status poller ----
+       "var pollTimer=null;"
+       // State → [cssClass, displayText]
+       "var TS={"
+         "'scanning':   ['dim', '&#x25CF; Scanning for TiVo\u2026'],"
+         "'reconnecting':['warn','&#x25CF; Reconnecting\u2026'],"
+         "'connecting':  ['warn','&#x25CF; Connecting\u2026'],"
+         "'ready':       ['ok',  '&#x25CF; Connected \u2014 forwarding']"
+       "};"
+       "var SS={"
+         "'advertising': ['dim', '&#x25CF; Not paired \u2014 advertising'],"
+         "'adv_bonded':  ['warn','&#x25CF; Bonded \u2014 re-advertising'],"
+         "'negotiating': ['warn','&#x25CF; Negotiating\u2026'],"
+         "'ready':       ['ok',  '&#x25CF; Connected \u2014 ready']"
+       "};"
+       "function setBadge(id,cls,txt){"
+         "var e=document.getElementById(id);"
+         "if(e)e.innerHTML=\"<span class='\"+cls+\"'>\"+txt+\"</span>\";}"
+       "function setAddr(id,addr){"
+         "var e=document.getElementById(id);"
+         "if(!e)return;"
+         "e.innerHTML=addr?\"Address: <code style='color:#c4b5fd'>\"+addr+\"</code>\":'';}"
+       "var dotOn=true;"
+       "function doPoll(){"
+         "fetch('/status').then(function(r){return r.json();}).then(function(d){"
+           "var t=TS[d.tivo.state]||['dim','&#x25CF; Unknown'];"
+           "setBadge('tivo-status',t[0],t[1]);"
+           "setAddr('tivo-addr',d.tivo.addr);"
+           "var s=SS[d.shield.state]||['dim','&#x25CF; Unknown'];"
+           "setBadge('shield-status',s[0],s[1]);"
+           "setAddr('shield-addr',d.shield.addr);"
+           // Pulse the live dot
+           "var dot=document.getElementById('poll-dot');"
+           "if(dot){dot.style.opacity=dotOn?'1':'.25';dotOn=!dotOn;}"
+         "}).catch(function(){});}"
+       "function startPoll(){if(!pollTimer){doPoll();pollTimer=setInterval(doPoll,1000);}}"
+       "function stopPoll(){clearInterval(pollTimer);pollTimer=null;}"
+       // ---- Tab switching (localStorage-persistent, starts/stops poller) ----
        "function showTab(n){"
-       "document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));"
-       "document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));"
-       "document.getElementById('pane-'+n).classList.add('on');"
-       "document.querySelector('[data-tab=\"'+n+'\"]').classList.add('on');"
-       "localStorage.setItem('tab',n);}"
-       "showTab(localStorage.getItem('tab')||'map');"
-       // Toggle between named key dropdown and CSM hex input
+         "document.querySelectorAll('.pane').forEach(function(p){p.classList.remove('on');});"
+         "document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('on');});"
+         "document.getElementById('pane-'+n).classList.add('on');"
+         "document.querySelector('[data-tab=\"'+n+'\"]').classList.add('on');"
+         "localStorage.setItem('tab',n);"
+         "if(n==='devices')startPoll();else stopPoll();}"
+       "var initTab=localStorage.getItem('tab')||'map';"
+       "showTab(initTab);"
+       // ---- KEY/CSM remap toggle ----
        "function updDst(sel){"
-       "var f=sel.closest('form');"
-       "var ks=f.querySelector('.key-sel');"
-       "var ci=f.querySelector('.csm-inp');"
-       "var isK=sel.value==='k';"
-       "ks.disabled=!isK;ks.style.display=isK?'':'none';"
-       "ci.disabled=isK; ci.style.display=isK?'none':'';"
-       "}"
+         "var f=sel.closest('form');"
+         "var ks=f.querySelector('.key-sel');"
+         "var ci=f.querySelector('.csm-inp');"
+         "var isK=sel.value==='k';"
+         "ks.disabled=!isK;ks.style.display=isK?'':'none';"
+         "ci.disabled=isK;ci.style.display=isK?'none'?'none':''}"
        "</script>";
 
   h += "</body></html>";
@@ -649,6 +707,7 @@ void webConfigInit() {
   }
 
   sHttp.on("/",               HTTP_GET, handleRoot);
+  sHttp.on("/status",         HTTP_GET, handleStatus);
   sHttp.on("/wifisave",       HTTP_GET, handleWifiSave);
   sHttp.on("/wifidisconnect", HTTP_GET, handleWifiDisconnect);
   sHttp.on("/apoff",          HTTP_GET, handleApOff);

@@ -56,6 +56,8 @@ static bool                  sShieldConn          = false;
 static NimBLEAddress         sShieldAddr;
 static bool                  sHasShieldAddr       = false;
 static uint16_t              sShieldConnHandle    = BLE_HS_CONN_HANDLE_NONE;
+// true between onConnect and the first CCCD write — Shield is doing service discovery
+static bool                  sShieldNegotiating   = false;
 
 // Log every CCCD write so we can confirm the Shield is enabling notifications
 class ReportCallbacks : public NimBLECharacteristicCallbacks {
@@ -64,16 +66,19 @@ class ReportCallbacks : public NimBLECharacteristicCallbacks {
                    uint16_t             subValue) override {
     Serial.printf("[HID] CCCD write — subValue=0x%04X "
                   "(1=notify enabled, 0=disabled)\r\n", subValue);
+    // First CCCD write means Android has finished service discovery
+    if (subValue & 0x0001) sShieldNegotiating = false;
   }
 };
 static ReportCallbacks sReportCbs;
 
 class PeriphCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, ble_gap_conn_desc* desc) override {
-    sShieldConn       = true;
-    sShieldAddr       = NimBLEAddress(desc->peer_id_addr);
-    sHasShieldAddr    = true;
-    sShieldConnHandle = desc->conn_handle;
+    sShieldConn         = true;
+    sShieldNegotiating  = true;   // waiting for Android to write CCCDs
+    sShieldAddr         = NimBLEAddress(desc->peer_id_addr);
+    sHasShieldAddr      = true;
+    sShieldConnHandle   = desc->conn_handle;
     Serial.printf("[HID] Shield connected: %s handle=%u\r\n",
                   sShieldAddr.toString().c_str(), sShieldConnHandle);
     NimBLEDevice::getAdvertising()->stop();
@@ -81,8 +86,9 @@ class PeriphCallbacks : public NimBLEServerCallbacks {
     // called from loop() — doing it immediately here blocks Android's CCCD setup.
   }
   void onDisconnect(NimBLEServer* s) override {
-    sShieldConn       = false;
-    sShieldConnHandle = BLE_HS_CONN_HANDLE_NONE;
+    sShieldConn        = false;
+    sShieldNegotiating = false;
+    sShieldConnHandle  = BLE_HS_CONN_HANDLE_NONE;
     Serial.println("[HID] Shield disconnected — re-advertising.");
     NimBLEDevice::getAdvertising()->start();
   }
@@ -178,6 +184,14 @@ void hidPeripheralInit() {
 }
 
 bool hidPeripheralConnected() { return sShieldConn; }
+
+// Returns a string token describing the current Shield connection phase.
+const char* hidGetShieldState() {
+  if (sShieldConn) {
+    return sShieldNegotiating ? "negotiating" : "ready";
+  }
+  return sHasShieldAddr ? "adv_bonded" : "advertising";
+}
 
 // Called from loop() 3 s after Shield connects to request faster BLE intervals.
 // Doing this immediately in onConnect blocks Android's CCCD setup.

@@ -13,6 +13,11 @@ static NimBLEAddress           sBondedAddr;
 static bool                    sHasBond     = false;
 static unsigned long           sReconnectAt = 0;
 
+// Fine-grained connection state for the live status UI
+// (read from the HTTP task; written from loop/callbacks — simple bools are safe)
+static bool sTivoConnecting = false;  // true while connectAndSubscribe() is running
+static bool sTivoReady      = false;  // true once subscribed and forwarding
+
 static const NimBLEUUID HID_SERVICE("1812");
 static const NimBLEUUID REPORT_CHAR("2A4D");
 static const NimBLEUUID REPORT_MAP_CHAR("2A4B");
@@ -195,8 +200,10 @@ class ClientCallbacks : public NimBLEClientCallbacks {
 
   void onDisconnect(NimBLEClient* client) override {
     Serial.println("[Central] Disconnected from TiVo remote.");
-    pClient      = nullptr;
-    targetDevice = nullptr;
+    pClient          = nullptr;
+    targetDevice     = nullptr;
+    sTivoConnecting  = false;
+    sTivoReady       = false;
 
     if (sHasBond) {
       Serial.println("[Central] Reconnecting in 3 s...");
@@ -284,6 +291,8 @@ bool subscribeReports(NimBLERemoteService* hid) {
 // ---- Connect and set up HID subscriptions ----
 
 bool connectAndSubscribe(NimBLEAddress addr) {
+  sTivoConnecting = true;
+  sTivoReady      = false;
   Serial.printf("[Central] Connecting to %s ...\r\n", addr.toString().c_str());
 
   pClient = NimBLEDevice::createClient();
@@ -294,7 +303,8 @@ bool connectAndSubscribe(NimBLEAddress addr) {
   if (!pClient->connect(addr)) {
     Serial.println("[Central] Connection failed.");
     NimBLEDevice::deleteClient(pClient);
-    pClient = nullptr;
+    pClient         = nullptr;
+    sTivoConnecting = false;
     return false;
   }
 
@@ -324,6 +334,8 @@ bool connectAndSubscribe(NimBLEAddress addr) {
     return false;
   }
 
+  sTivoConnecting = false;
+  sTivoReady      = true;
   Serial.println("[Central] Ready — forwarding to Shield.");
   return true;
 }
@@ -335,6 +347,15 @@ bool tivoIsConnected(){ return pClient != nullptr && pClient->isConnected(); }
 String tivoGetAddr()  {
   if (!sHasBond) return "";
   return String(sBondedAddr.toString().c_str());
+}
+
+// Returns a string token describing the current TiVo connection phase.
+// Called from the HTTP task — reads simple booleans, no locking needed.
+const char* tivoGetState() {
+  if (sTivoReady)      return "ready";
+  if (sTivoConnecting) return "connecting";
+  if (sHasBond)        return "reconnecting";
+  return "scanning";
 }
 
 // ---- Re-pair helpers (called from web UI) ----

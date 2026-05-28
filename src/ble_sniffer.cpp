@@ -117,8 +117,8 @@ static unsigned long sWifiParamsAt      = 0;      // non-zero: re-fire fast para
 //   keydown is treated as the other characteristic's idle report, NOT a real key-up.
 // kBounceMsGuard:  minimum gap before the same code is accepted again after key-up,
 //   absorbing the TiVo's rapid keydown→keyup→keydown auto-repeat initiation.
-static constexpr unsigned long kAllZeroGuardMs = 50;
-static constexpr unsigned long kBounceMsGuard  = 150;
+static constexpr unsigned long kAllZeroGuardMs = 80;
+static constexpr unsigned long kBounceMsGuard  = 300;
 
 void hidNotifyCallback(
     NimBLERemoteCharacteristic* pChar,

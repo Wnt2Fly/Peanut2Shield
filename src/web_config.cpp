@@ -536,7 +536,7 @@ static void handleRoot() {
          "var ci=f.querySelector('.csm-inp');"
          "var isK=sel.value==='k';"
          "ks.disabled=!isK;ks.style.display=isK?'':'none';"
-         "ci.disabled=isK;ci.style.display=isK?'none'?'none':''}"
+         "ci.disabled=isK;ci.style.display=isK?'none':''}"
        "</script>";
 
   h += "</body></html>";

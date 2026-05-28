@@ -100,6 +100,7 @@ static unsigned long sKbReleaseAt       = 0;      // non-zero while keyboard pul
 static unsigned long sLedOffAt          = 0;      // non-zero while LED flash is active
 static unsigned long sShieldParamsAt    = 0;      // non-zero: fire hidRequestFastParams at time
 static bool          sWasShieldConn     = false;
+static bool          sWebConfigStarted  = false;  // true once webConfigInit() has been called
 
 // The TiVo has two 4-byte consumer characteristics (Report IDs 0x0C and 0x10).
 // When one fires a keydown, the other simultaneously fires all-zeros (its idle value).
@@ -427,14 +428,11 @@ void setup() {
   // Load translation keymap from NVS
   keymapInit();
 
-  // Start WiFi AP + web config server
-  webConfigInit();
-
   // Set up central scanner
   NimBLEScan* scan = NimBLEDevice::getScan();
   scan->setAdvertisedDeviceCallbacks(new AdvertisedCallbacks(), false);
-  scan->setInterval(100);
-  scan->setWindow(50);
+  scan->setInterval(200);  // 200 × 0.625 ms = 125 ms scan period
+  scan->setWindow(30);     // 30 × 0.625 ms = 18.75 ms active — 15% duty cycle
   scan->setActiveScan(true);
 
   // Restore TiVo bond address (stored separately to avoid confusion with Shield bond)
@@ -452,14 +450,35 @@ void setup() {
     scan->start(0, nullptr, false);
   }
 
-  // Pre-populate Shield bond state from NimBLE's stored bonds so the web UI
-  // shows "Bonded — advertising" immediately on reboot rather than "Not paired".
+  // Check whether a Shield bond already exists.
+  // If yes: start WiFi + web config immediately (normal operation).
+  // If no:  defer WiFi until the Shield pairs — this eliminates radio contention
+  //         during the critical advertising window so the Shield can see the device.
   hidLoadShieldBond(sBondedAddr, sHasBond);
+  bool shieldBondFound = (hidGetShieldAddr().length() > 0);
+
+  if (shieldBondFound) {
+    webConfigInit();
+    sWebConfigStarted = true;
+  } else {
+    Serial.println("[Web] No Shield bond — deferring WiFi until Shield pairs.");
+  }
 }
 
 void loop() {
-  // Service HTTP requests
-  webConfigLoop();
+  // If webConfigInit() was deferred (no Shield bond at boot), start it now the
+  // moment the Shield first connects so WiFi doesn't compete with BLE advertising.
+  if (!sWebConfigStarted) {
+    bool shieldJustConnected = hidPeripheralConnected();
+    if (shieldJustConnected) {
+      Serial.println("[Web] Shield connected — starting WiFi + web config.");
+      webConfigInit();
+      sWebConfigStarted = true;
+    }
+  }
+
+  // Service HTTP requests (no-op until webConfigInit has been called)
+  if (sWebConfigStarted) webConfigLoop();
 
   // Keyboard pulse-release for translated keys
   if (sKbReleaseAt && millis() >= sKbReleaseAt) {

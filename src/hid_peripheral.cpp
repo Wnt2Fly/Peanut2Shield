@@ -178,6 +178,8 @@ void hidPeripheralInit() {
   pAdv->addServiceUUID("1812");
   pAdv->setAppearance(0x03C1);  // Keyboard
   pAdv->setScanResponse(true);
+  pAdv->setMinInterval(32);   // 32 × 0.625 ms = 20 ms  — fast discovery
+  pAdv->setMaxInterval(64);   // 64 × 0.625 ms = 40 ms
   pAdv->start();
 
   Serial.println("[HID] Peripheral ready — advertising as 'TiVo-Bridge'.");

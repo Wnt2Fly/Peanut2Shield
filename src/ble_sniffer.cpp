@@ -6,6 +6,10 @@
 #include "hid_peripheral.h"
 #include "web_config.h"
 
+// Set to 1 to completely disable WiFi and the web config server.
+// Useful for testing BLE without any radio contention.
+#define WIFI_DISABLED 1
+
 // ---- Central (TiVo remote) state ----
 static NimBLEClient*           pClient      = nullptr;
 static NimBLEAdvertisedDevice* targetDevice = nullptr;
@@ -462,12 +466,17 @@ void setup() {
   hidLoadShieldBond(sBondedAddr, sHasBond);
   bool shieldBondFound = (hidGetShieldAddr().length() > 0);
 
+#if WIFI_DISABLED
+  Serial.println("[Web] WiFi disabled at compile time.");
+  sWebConfigStarted = false;  // loop will never try to start it
+#else
   if (shieldBondFound) {
     webConfigInit();
     sWebConfigStarted = true;
   } else {
     Serial.println("[Web] No Shield bond — deferring WiFi until Shield pairs.");
   }
+#endif
 }
 
 void loop() {
@@ -495,6 +504,7 @@ void loop() {
     hidRequestFastParams();
   }
 
+#if !WIFI_DISABLED
   // ---- Deferred WiFi startup ----
   // webConfigInit() was skipped at boot (no Shield bond). Start it now,
   // 10 s after CCCDs were written so BLE params are already established.
@@ -507,11 +517,10 @@ void loop() {
     }
   }
 
-  // Service HTTP requests (no-op until webConfigInit has been called)
+  // Service HTTP requests
   if (sWebConfigStarted) webConfigLoop();
 
   // ---- Re-request fast params 2 s after WiFi STA connects ----
-  // WiFi coexistence can reset negotiated BLE connection parameters.
   {
     bool isWifi = (WiFi.status() == WL_CONNECTED);
     if (isWifi && !sWasWifiConn) {
@@ -524,6 +533,7 @@ void loop() {
     sWifiParamsAt = 0;
     hidRequestFastParams();
   }
+#endif
 
   // ---- Detect Shield connect edge (only for sWasShieldConn tracking) ----
   {

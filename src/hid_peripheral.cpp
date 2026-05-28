@@ -265,17 +265,14 @@ static void restartAdvertising() {
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
   pAdv->stop();
   delay(100);
-  // Re-declare data every time — harmless if already present, required if PDU was reset.
-  pAdv->addServiceUUID("1812");
-  pAdv->setAppearance(0x03C1);  // HID Keyboard
-  pAdv->setScanResponse(true);
-  // Use faster advertising intervals (20–40 ms) so the Shield finds it quickly.
-  // Default NimBLE intervals are much longer and can make the device appear "invisible"
-  // during a short Android TV scan window.
-  pAdv->setMinInterval(32);   // 32 × 0.625 ms = 20 ms
+  // Do NOT call addServiceUUID/setAppearance here — those are already configured
+  // in hidPeripheralInit() and persist in the NimBLEAdvertising object after stop().
+  // Calling addServiceUUID again would add a duplicate 0x1812 entry, producing a
+  // malformed advertising PDU that Android TV silently ignores.
+  pAdv->setMinInterval(32);   // 32 × 0.625 ms = 20 ms  — fast discovery
   pAdv->setMaxInterval(64);   // 64 × 0.625 ms = 40 ms
   pAdv->start();
-  Serial.printf("[HID] Advertising started — isAdvertising=%d\r\n",
+  Serial.printf("[HID] Advertising restarted — isAdvertising=%d\r\n",
                 pAdv->isAdvertising() ? 1 : 0);
 }
 

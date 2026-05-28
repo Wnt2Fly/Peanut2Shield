@@ -101,10 +101,14 @@ static unsigned long sLedOffAt          = 0;      // non-zero while LED flash is
 static unsigned long sShieldParamsAt    = 0;      // non-zero: fire hidRequestFastParams at time
 static bool          sWasShieldConn     = false;
 
-// Minimum gap (ms) before the same code is accepted again after key-up.
-// Absorbs the TiVo's ~20-40 ms keydown→keyup→keydown bounce without
-// blocking intentional rapid taps (typical human double-tap ~200 ms+).
-static constexpr unsigned long kBounceMsGuard = 80;
+// The TiVo has two 4-byte consumer characteristics (Report IDs 0x0C and 0x10).
+// When one fires a keydown, the other simultaneously fires all-zeros (its idle value).
+// kAllZeroGuardMs: any same-length all-zero arriving within this window of the last
+//   keydown is treated as the other characteristic's idle report, NOT a real key-up.
+// kBounceMsGuard:  minimum gap before the same code is accepted again after key-up,
+//   absorbing the TiVo's rapid keydown→keyup→keydown auto-repeat initiation.
+static constexpr unsigned long kAllZeroGuardMs = 50;
+static constexpr unsigned long kBounceMsGuard  = 150;
 
 void hidNotifyCallback(
     NimBLERemoteCharacteristic* pChar,
@@ -116,15 +120,19 @@ void hidNotifyCallback(
   }
 
   if (allZero) {
-    // Only treat as key-up when the length matches the last non-zero report.
-    // The TiVo has 32-byte keyboard characteristics that fire all-zeros constantly
-    // while consumer (4-byte) keys are held. If we let those reset sKeyIsDown the
-    // hold-repeat guard breaks, causing the second consumer characteristic (0x10)
-    // to slip through as a duplicate keydown on every single press.
     if (length == sLastLen) {
-      sKeyIsDown = false;
-      hidReleaseConsumer();
+      unsigned long elapsed = millis() - sKeyDownAt;
+      if (elapsed >= kAllZeroGuardMs) {
+        // True key-up: enough time has passed since the keydown.
+        sKeyIsDown = false;
+        hidReleaseConsumer();
+      }
+      // else: < 50 ms after keydown — this is the other consumer characteristic
+      // firing its idle value. Ignore it so sKeyIsDown stays true and the
+      // hold-repeat guard can block the second characteristic's keydown.
     }
+    // Different-length all-zeros (e.g. 32-byte keyboard char while nav key held):
+    // silently dropped — no state change.
     return;
   }
 
@@ -133,7 +141,7 @@ void hidNotifyCallback(
   // Suppress hold-repeat: same data while key is physically held
   if (sKeyIsDown && length == sLastLen && memcmp(pData, sLastData, length) == 0) return;
 
-  // Suppress bounce: same data arriving within kBounceMsGuard ms of a key-up
+  // Suppress bounce: same code within kBounceMsGuard ms of key-up
   if (!sKeyIsDown && length == sLastLen &&
       memcmp(pData, sLastData, length) == 0 &&
       (now - sKeyDownAt) < kBounceMsGuard) {

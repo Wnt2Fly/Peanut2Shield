@@ -85,12 +85,21 @@ static const char* lookupKey(uint8_t code) {
 
 // ---- HID notify callback (central side) ----
 
+// Dedup state — intentionally NOT cleared on key-up to absorb the TiVo's
+// rapid keydown→keyup→keydown bounce (auto-repeat initiation).
 static uint8_t       sLastData[20];
 static size_t        sLastLen           = 0;
-static unsigned long sKbReleaseAt       = 0;   // non-zero while a keyboard pulse-release is pending
-static unsigned long sLedOffAt          = 0;   // non-zero while LED flash is active
-static unsigned long sShieldParamsAt    = 0;   // non-zero: fire hidRequestFastParams at this time
+static bool          sKeyIsDown         = false;  // true while the key is physically held
+static unsigned long sKeyDownAt         = 0;      // millis() when last keydown was forwarded
+static unsigned long sKbReleaseAt       = 0;      // non-zero while keyboard pulse-release pending
+static unsigned long sLedOffAt          = 0;      // non-zero while LED flash is active
+static unsigned long sShieldParamsAt    = 0;      // non-zero: fire hidRequestFastParams at time
 static bool          sWasShieldConn     = false;
+
+// Minimum gap (ms) before the same code is accepted again after key-up.
+// Absorbs the TiVo's ~20-40 ms keydown→keyup→keydown bounce without
+// blocking intentional rapid taps (typical human double-tap ~200 ms+).
+static constexpr unsigned long kBounceMsGuard = 80;
 
 void hidNotifyCallback(
     NimBLERemoteCharacteristic* pChar,
@@ -102,15 +111,29 @@ void hidNotifyCallback(
   }
 
   if (allZero) {
-    sLastLen = 0;
-    // Consumer controls: release on TiVo's own key-up (natural hold/repeat timing)
+    sKeyIsDown = false;
+    // Consumer release fires immediately on TiVo key-up (natural hold/repeat timing).
+    // Keyboard releases use the sKbReleaseAt pulse timer — no action needed here.
     hidReleaseConsumer();
-    // Keyboard releases are handled by the sKbReleaseAt pulse timer in loop()
+    // sLastData/sLastLen are intentionally preserved so the bounce guard below
+    // can block the rapid re-keydown the TiVo sends during auto-repeat init.
     return;
   }
 
-  // Suppress auto-repeat
-  if (length == sLastLen && memcmp(pData, sLastData, length) == 0) return;
+  unsigned long now = millis();
+
+  // Suppress hold-repeat: same data while key is physically held
+  if (sKeyIsDown && length == sLastLen && memcmp(pData, sLastData, length) == 0) return;
+
+  // Suppress bounce: same data arriving within kBounceMsGuard ms of a key-up
+  if (!sKeyIsDown && length == sLastLen &&
+      memcmp(pData, sLastData, length) == 0 &&
+      (now - sKeyDownAt) < kBounceMsGuard) {
+    return;
+  }
+
+  sKeyIsDown = true;
+  sKeyDownAt = now;
   memcpy(sLastData, pData, length < sizeof(sLastData) ? length : sizeof(sLastData));
   sLastLen = length;
 
@@ -139,9 +162,8 @@ void hidNotifyCallback(
   }
 
   // ---- Translate and forward to Shield ----
-  // Keyboard translations (ESC/ENTER/HOME): forced 50 ms pulse — keydown now,
-  // release via sKbReleaseAt timer so the Shield never sees a held key.
-  // Consumer pass-throughs: natural timing — hold until TiVo's key-up fires.
+  // Keyboard translations: forced 30 ms pulse so Shield never sees a held key.
+  // Consumer pass-throughs: natural timing — held until TiVo's own key-up fires.
   if (length == 8) {
     hidSendKeyboardRaw(pData);
     sKbReleaseAt = millis() + 30;

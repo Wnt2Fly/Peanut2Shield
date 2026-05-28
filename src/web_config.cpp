@@ -665,12 +665,9 @@ static void handleSetBlePower() {
   sCfgPrefs.begin("cfg", false);
   sCfgPrefs.putString("ble_power", label);
   sCfgPrefs.end();
-  // setPower() resets the BLE radio — restart advertising so the Shield
-  // reconnects automatically rather than sitting disconnected.
-  NimBLEDevice::getAdvertising()->stop();
-  delay(50);
-  NimBLEDevice::getAdvertising()->start();
-  Serial.println("[HID] Advertising restarted after TX power change.");
+  // setPower() resets the BLE radio — rebuild and restart advertising so the
+  // Shield reconnects automatically rather than sitting disconnected.
+  hidRestartAdvertising();
   sHttp.sendHeader("Location", "/");
   sHttp.send(303);
 }

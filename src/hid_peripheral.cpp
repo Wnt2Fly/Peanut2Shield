@@ -255,6 +255,30 @@ void hidReleaseConsumer() {
   if (sShieldConn) pCsReport->notify();
 }
 
+// Rebuild and start advertising with the correct HID service data.
+// Called after bond deletion or TX power change so the advertising PDU is
+// always fresh — NimBLE can drop it after stack-level resets.
+static void restartAdvertising();   // forward declaration for hidForgetShield
+void hidRestartAdvertising() { restartAdvertising(); }
+
+static void restartAdvertising() {
+  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+  pAdv->stop();
+  delay(100);
+  // Re-declare data every time — harmless if already present, required if PDU was reset.
+  pAdv->addServiceUUID("1812");
+  pAdv->setAppearance(0x03C1);  // HID Keyboard
+  pAdv->setScanResponse(true);
+  // Use faster advertising intervals (20–40 ms) so the Shield finds it quickly.
+  // Default NimBLE intervals are much longer and can make the device appear "invisible"
+  // during a short Android TV scan window.
+  pAdv->setMinInterval(32);   // 32 × 0.625 ms = 20 ms
+  pAdv->setMaxInterval(64);   // 64 × 0.625 ms = 40 ms
+  pAdv->start();
+  Serial.printf("[HID] Advertising started — isAdvertising=%d\r\n",
+                pAdv->isAdvertising() ? 1 : 0);
+}
+
 void hidForgetShield(NimBLEAddress tivoAddr, bool hasTivo) {
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
   pAdv->stop();
@@ -267,7 +291,9 @@ void hidForgetShield(NimBLEAddress tivoAddr, bool hasTivo) {
       pServer->disconnect(handle);
       Serial.printf("[HID] Disconnecting Shield handle %u\r\n", handle);
     }
-    sShieldConn = false;
+    sShieldConn        = false;
+    sShieldNegotiating = false;
+    sShieldConnHandle  = BLE_HS_CONN_HANDLE_NONE;
   }
 
   // Delete all BLE bonds except the TiVo remote's bond
@@ -281,9 +307,9 @@ void hidForgetShield(NimBLEAddress tivoAddr, bool hasTivo) {
     deleted++;
   }
   sHasShieldAddr = false;
-  Serial.printf("[HID] Shield bond cleared (%d removed). Re-advertising.\r\n", deleted);
+  Serial.printf("[HID] Shield bond cleared (%d removed).\r\n", deleted);
 
-  delay(200);  // let BLE stack settle before advertising
-  pAdv->start();
-  Serial.println("[HID] Advertising restarted — pair from Shield now.");
+  delay(300);  // let BLE stack settle after bond deletion
+  restartAdvertising();
+  Serial.println("[HID] Ready — pair from Shield now.");
 }

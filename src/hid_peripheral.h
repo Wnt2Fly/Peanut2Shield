@@ -17,6 +17,9 @@ const char* hidGetShieldState();
 // Must be called at least 3 s after connection to avoid disrupting CCCD setup.
 void hidRequestFastParams();
 
+// Rebuild and restart advertising (used after TX power change or bond deletion).
+void hidRestartAdvertising();
+
 // Send a single key-press on the keyboard report, no modifier.
 void hidSendKeyboard(uint8_t modifier, uint8_t keycode);
 

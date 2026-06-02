@@ -186,6 +186,32 @@ static const NimBLEUUID PROTOCOL_MODE_CHAR("2A4E");
 
 static Preferences sTivoPrefs;
 
+// Shield side is "done" when CCCD negotiation finished, or bonded but disconnected.
+static bool shieldDoneForTivo() {
+  return hidShieldReady() ||
+         (hidHasShieldBond() && !hidPeripheralConnected());
+}
+
+// Start TiVo central scan or reconnect only after Shield pairing is complete.
+static void tryStartTiVoCentral() {
+  if (!shieldDoneForTivo()) return;
+  if (sTivoReady || sTivoConnecting || pClient != nullptr) return;
+
+  if (sHasBond) {
+    if (!doConnect) {
+      Serial.println("[Central] Shield ready — connecting to stored TiVo bond...");
+      doConnect = true;
+    }
+    return;
+  }
+
+  NimBLEScan* scan = NimBLEDevice::getScan();
+  if (scan && !scan->isScanning()) {
+    Serial.println("[Central] Shield ready — scanning for TiVo (TiVo + Back on remote).");
+    scan->start(0, nullptr, false);
+  }
+}
+
 // ============================================================
 // LED sync — set background pattern from BLE state automatically.
 // Skips if a button-driven special pattern is active.
@@ -196,8 +222,8 @@ static void syncLedState() {
   if (sLedCurrent == LedPattern::RapidFlash) return;
   if (sLedCurrent == LedPattern::ReadyOnce)  return;
 
-  bool hasShield = hidHasShieldBond();
   bool bothReady = hidShieldReady() && sTivoReady;
+  bool shieldDone = shieldDoneForTivo();
 
   static bool sWasBothReady = false;
 
@@ -211,7 +237,7 @@ static void syncLedState() {
   } else if (bothReady) {
     ledSetBase(LedPattern::Ready);
   } else if (!bothReady) {
-    ledSetBase(hasShield ? LedPattern::DoubleFlash : LedPattern::SlowBlink);
+    ledSetBase(shieldDone ? LedPattern::DoubleFlash : LedPattern::SlowBlink);
   }
 
   sWasBothReady = bothReady;
@@ -404,8 +430,8 @@ class ClientCallbacks : public NimBLEClientCallbacks {
       Serial.println("[Central] Reconnecting in 3 s...");
       sReconnectAt = millis() + CFG_TIVO_RECONNECT_MS;
     } else {
-      Serial.println("[Central] No bond — restarting scan.");
-      NimBLEDevice::getScan()->start(0, nullptr, false);
+      Serial.println("[Central] No bond — will scan when Shield is ready.");
+      tryStartTiVoCentral();
     }
   }
 
@@ -547,8 +573,8 @@ static void forgetTiVo() {
   sHasBond     = false;
   sReconnectAt = 0;
   doConnect    = false;
-  Serial.println("[BTN] TiVo bond cleared — scanning for new remote.");
-  NimBLEDevice::getScan()->start(0, nullptr, false);
+  Serial.println("[BTN] TiVo bond cleared — will scan when Shield is ready.");
+  tryStartTiVoCentral();
 }
 
 static void forgetShield() {
@@ -669,11 +695,10 @@ void setup() {
   if (addrStr.length() > 0) {
     sBondedAddr = NimBLEAddress(addrStr.c_str());
     sHasBond    = true;
-    Serial.printf("[Central] Stored TiVo bond: %s — connecting...\r\n", addrStr.c_str());
-    doConnect = true;
+    Serial.printf("[Central] Stored TiVo bond: %s (connects after Shield ready).\r\n",
+                  addrStr.c_str());
   } else {
-    Serial.println("[Central] No TiVo bond. Put remote in pairing mode: TiVo + Back.");
-    scan->start(0, nullptr, false);
+    Serial.println("[Central] No TiVo bond. Pair Shield first; then TiVo + Back.");
   }
 
   // Load Shield bond so the peripheral knows which bond to preserve
@@ -696,6 +721,7 @@ void loop() {
   }
 
   syncLedState();
+  tryStartTiVoCentral();
 
   // ---- Shield CCCD edge — schedule fast BLE params ----
   {
@@ -743,8 +769,8 @@ void loop() {
 
     if (hasAddr) {
       if (!connectAndSubscribe(addr)) {
-        Serial.println("[Central] Connect failed — scanning...");
-        NimBLEDevice::getScan()->start(0, nullptr, false);
+        Serial.println("[Central] Connect failed — will retry scan when appropriate.");
+        tryStartTiVoCentral();
       }
     }
   }

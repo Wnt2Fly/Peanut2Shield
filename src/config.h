@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 // Name broadcast by the ESP32 over BLE (visible during Shield pairing scan)
-#define CFG_BLE_DEVICE_NAME  "TiVo-Bridge"
+#define CFG_BLE_DEVICE_NAME  "Peanut2Shield"
 
 // BLE appearance value advertised to Android TV.
 // 0x0180 = Generic Remote Control - avoids the PIN-entry flow triggered by
@@ -90,7 +90,7 @@
 // -----------------------------------------------------------------------------
 
 #define CFG_LED_PIN        21   // WS2812 serial data line
-#define CFG_LED_BRIGHTNESS 30   // 0-255 global brightness scaling (applied by NeoPixel driver)
+#define CFG_LED_BRIGHTNESS 15   // 0-255 global brightness scaling (applied by NeoPixel driver)
 
 // LED colours — R, G, B at full (255) scale.
 // All channels are divided by CFG_LED_BRIGHTNESS/255 at runtime,

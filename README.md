@@ -152,8 +152,9 @@ Press **RESET** (or power on). The LED may show **steady yellow** briefly while 
 ### 2 — Pair the Shield  ← do this when you see slow blink
 
 1. On the Shield: **Settings → Remote & Accessories → Add Accessory**
-2. Select **TiVo-Bridge** — it pairs automatically (no PIN)
-3. LED switches to **orange double-flash** (two quick flashes, pause, repeat) — Shield is bonded, now waiting for the TiVo remote
+2. Select **Peanut2Shield** — it pairs automatically (no PIN)
+3. Keep **slow blink** while the Shield finishes setup (CCCD negotiation) — do not pair the TiVo yet
+4. When setup completes, LED switches to **orange double-flash** — Shield is ready, now waiting for the TiVo remote
 
 ### 3 — Pair the TiVo remote  ← do this when you see double-flash
 

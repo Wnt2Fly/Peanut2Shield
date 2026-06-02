@@ -183,7 +183,7 @@ void hidPeripheralInit() {
   pAdv->setMaxInterval(CFG_ADV_MAX_INTERVAL);
   pAdv->start();
 
-  Serial.println("[HID] Peripheral ready — advertising as 'TiVo-Bridge'.");
+  Serial.printf("[HID] Peripheral ready — advertising as '%s'.\r\n", CFG_BLE_DEVICE_NAME);
 }
 
 bool hidPeripheralConnected() { return sShieldConn; }

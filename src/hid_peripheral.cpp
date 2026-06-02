@@ -1,4 +1,5 @@
 #include "hid_peripheral.h"
+#include "config.h"
 #include <NimBLEDevice.h>
 #include <Arduino.h>
 
@@ -176,10 +177,10 @@ void hidPeripheralInit() {
   // ---- Advertising ----
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
   pAdv->addServiceUUID("1812");
-  pAdv->setAppearance(0x0180);  // Generic Remote Control
+  pAdv->setAppearance(CFG_BLE_APPEARANCE);
   pAdv->setScanResponse(true);
-  pAdv->setMinInterval(32);   // 32 × 0.625 ms = 20 ms  — fast discovery
-  pAdv->setMaxInterval(64);   // 64 × 0.625 ms = 40 ms
+  pAdv->setMinInterval(CFG_ADV_MIN_INTERVAL);
+  pAdv->setMaxInterval(CFG_ADV_MAX_INTERVAL);
   pAdv->start();
 
   Serial.println("[HID] Peripheral ready — advertising as 'TiVo-Bridge'.");
@@ -203,7 +204,8 @@ const char* hidGetShieldState() {
 // Doing this immediately in onConnect blocks Android's CCCD setup.
 void hidRequestFastParams() {
   if (!sShieldConn || sShieldConnHandle == BLE_HS_CONN_HANDLE_NONE) return;
-  pServer->updateConnParams(sShieldConnHandle, 6, 12, 0, 51);
+  pServer->updateConnParams(sShieldConnHandle, CFG_CONN_MIN_INTERVAL,
+                            CFG_CONN_MAX_INTERVAL, CFG_CONN_LATENCY, CFG_CONN_TIMEOUT);
   Serial.println("[HID] Requested fast conn params (7.5-15 ms) from Shield.");
 }
 
@@ -211,6 +213,8 @@ String hidGetShieldAddr() {
   if (!sHasShieldAddr) return "";
   return String(sShieldAddr.toString().c_str());
 }
+
+bool hidHasShieldBond() { return sHasShieldAddr; }
 
 void hidLoadShieldBond(NimBLEAddress tivoAddr, bool hasTivo) {
   int n = NimBLEDevice::getNumBonds();
@@ -270,13 +274,13 @@ void hidRestartAdvertising() { restartAdvertising(); }
 static void restartAdvertising() {
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
   pAdv->stop();
-  delay(100);
+  delay(CFG_ADV_RESTART_SETTLE_MS);
   // Do NOT call addServiceUUID/setAppearance here — those are already configured
   // in hidPeripheralInit() and persist in the NimBLEAdvertising object after stop().
   // Calling addServiceUUID again would add a duplicate 0x1812 entry, producing a
   // malformed advertising PDU that Android TV silently ignores.
-  pAdv->setMinInterval(32);   // 32 × 0.625 ms = 20 ms  — fast discovery
-  pAdv->setMaxInterval(64);   // 64 × 0.625 ms = 40 ms
+  pAdv->setMinInterval(CFG_ADV_MIN_INTERVAL);
+  pAdv->setMaxInterval(CFG_ADV_MAX_INTERVAL);
   pAdv->start();
   Serial.printf("[HID] Advertising restarted — isAdvertising=%d\r\n",
                 pAdv->isAdvertising() ? 1 : 0);
@@ -312,7 +316,7 @@ void hidForgetShield(NimBLEAddress tivoAddr, bool hasTivo) {
   sHasShieldAddr = false;
   Serial.printf("[HID] Shield bond cleared (%d removed).\r\n", deleted);
 
-  delay(300);  // let BLE stack settle after bond deletion
+  delay(CFG_BOND_DELETE_SETTLE_MS);
   restartAdvertising();
   Serial.println("[HID] Ready — pair from Shield now.");
 }

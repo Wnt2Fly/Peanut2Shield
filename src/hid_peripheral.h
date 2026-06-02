@@ -46,6 +46,10 @@ void hidForgetShield(NimBLEAddress tivoAddr, bool hasTivo);
 // Returns the Shield's BLE address as a string, or "" if it has never connected.
 String hidGetShieldAddr();
 
+// Returns true if a Shield bond address is known (connected or loaded from NVS).
+// Cheaper than hidGetShieldAddr() — avoids String allocation.
+bool hidHasShieldBond();
+
 // Scan NimBLE bond store on boot and pre-populate Shield address if a stored
 // bond exists (any bond that is not the TiVo bond).
 void hidLoadShieldBond(NimBLEAddress tivoAddr, bool hasTivo);

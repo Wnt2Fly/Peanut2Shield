@@ -1,43 +1,36 @@
 #include "keymap.h"
+#include "config.h"
 #include <Preferences.h>
 #include <string.h>
 
 static Preferences sPrefs;
 
-// Built-in default translations
-static const RemapEntry kDefaults[] = {
-  { 0x003D, OutputType::Keyboard, 0x3D },  // TiVo      → KEY 0x3D
-  { 0x003E, OutputType::Keyboard, 0x40 },  // Live TV   → KEY 0x40
-  { 0x008D, OutputType::Keyboard, 0x41 },  // Guide     → KEY 0x41
-  { 0x0209, OutputType::Keyboard, 0x42 },  // Info      → KEY 0x42
-  { 0xCE00, OutputType::Keyboard, 0x43 },  // Skip      → KEY 0x43
-  { 0x01C8, OutputType::Keyboard, 0x44 },  // Netflix   → KEY 0x44
-  { 0x0223, OutputType::Consumer, 0x0223 }, // Home     → CSM pass-through
-  { 0x0041, OutputType::Consumer, 0x0041 }, // OK/Select → CSM pass-through
-  { 0x0224, OutputType::Keyboard, 0x29 },  // Back      → ESC
-};
+// Built-in default translations — entries defined in config.h via CFG_DEFAULT_KEYMAP
+#define _KM_ROW(src, type, dst)  { src, OutputType::type, dst },
+static const RemapEntry kDefaults[] = { CFG_DEFAULT_KEYMAP(_KM_ROW) };
+#undef _KM_ROW
 
 static RemapEntry sCustom[KEYMAP_MAX_CUSTOM];
 static int        sCustomCount = 0;
 
 void keymapInit() {
-  sPrefs.begin("keymap", false);
-  sCustomCount = (int)sPrefs.getInt("cnt", 0);
+  sPrefs.begin(CFG_NVS_KEYMAP_NS, false);
+  sCustomCount = (int)sPrefs.getInt(CFG_NVS_KEYMAP_CNT, 0);
   if (sCustomCount < 0 || sCustomCount > KEYMAP_MAX_CUSTOM)
     sCustomCount = 0;
   for (int i = 0; i < sCustomCount; i++) {
     char key[8];
-    snprintf(key, sizeof(key), "r%d", i);
+    snprintf(key, sizeof(key), CFG_NVS_KEYMAP_ROW "%d", i);
     sPrefs.getBytes(key, &sCustom[i], sizeof(RemapEntry));
   }
   Serial.printf("[Keymap] Loaded %d custom remap(s).\r\n", sCustomCount);
 }
 
 static void nvsSave() {
-  sPrefs.putInt("cnt", sCustomCount);
+  sPrefs.putInt(CFG_NVS_KEYMAP_CNT, sCustomCount);
   for (int i = 0; i < sCustomCount; i++) {
     char key[8];
-    snprintf(key, sizeof(key), "r%d", i);
+    snprintf(key, sizeof(key), CFG_NVS_KEYMAP_ROW "%d", i);
     sPrefs.putBytes(key, &sCustom[i], sizeof(RemapEntry));
   }
 }
@@ -96,7 +89,7 @@ bool keymapRemove(uint16_t srcCode) {
 void keymapClearCustom() {
   sCustomCount = 0;
   sPrefs.clear();
-  sPrefs.putInt("cnt", 0);
+  sPrefs.putInt(CFG_NVS_KEYMAP_CNT, 0);
 }
 
 int keymapGetCustom(RemapEntry* buf, int maxCount) {

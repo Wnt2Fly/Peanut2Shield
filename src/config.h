@@ -86,7 +86,7 @@
 #define CFG_BOUNCE_GUARD_ACTION_MS  0
 // -----------------------------------------------------------------------------
 // Hardware: Activity LED  (Waveshare ESP32-S3-Zero - WS2812 RGB LED on GPIO 21)
-// Driven via Adafruit_NeoPixel; CFG_LED_ON/OFF are not used for this board.
+// Driven via Adafruit_NeoPixel (NEO_RGB channel order in Peanut2Shield.cpp).
 // -----------------------------------------------------------------------------
 
 #define CFG_LED_PIN        21   // WS2812 serial data line
@@ -121,7 +121,7 @@
 #define CFG_LED_RAPID_ON_MS     100
 #define CFG_LED_RAPID_OFF_MS    100
 
-// ReadyOnce: 3 quick confirmation flashes played once when both devices are ready
+// ReadyOnce: 3 quick confirmation flashes, then steady green (Ready)
 #define CFG_LED_READY_FLASH_MS   80  // width of each confirmation flash
 #define CFG_LED_READY_GAP_MS     80  // gap between confirmation flashes
 

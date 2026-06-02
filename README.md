@@ -2,6 +2,12 @@
 
 An ESP32-S3 firmware that bridges a **TiVo Stream 4K remote** to an **Nvidia Shield TV** over Bluetooth LE — no WiFi, no app, no cloud.
 
+<a href="https://www.buymeacoffee.com/wnt2fly" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="35" width="auto"></a>
+
+![ESP32-S3](https://img.shields.io/badge/ESP32--S3-Zero-Waveshare-blue) ![BLE](https://img.shields.io/badge/BLE-HID-blueviolet) ![NVIDIA Shield](https://img.shields.io/badge/NVIDIA-Shield%20TV-76B900) ![TiVo](https://img.shields.io/badge/TiVo-Stream%204K%20Remote-orange) ![PlatformIO](https://img.shields.io/badge/PlatformIO-espressif32-FBC02D)
+
+**Topics:** `esp32` · `esp32-s3` · `ble` · `bluetooth-low-energy` · `hid` · `nimble` · `nvidia-shield` · `android-tv` · `tivo` · `tivo-remote` · `platformio` · `waveshare`
+
 ---
 
 ## What it does
@@ -16,7 +22,7 @@ The ESP32-S3 simultaneously acts as:
 - **BLE Central** — connects to the TiVo remote as a HID host and receives button reports
 - **BLE Peripheral** — advertises as a HID keyboard + consumer control device to the Shield
 
-When a button is pressed on the TiVo remote, the firmware translates it (if needed) and forwards it to the Shield in real time.  All bonds and custom keymaps are stored in NVS and survive reboots.
+When a button is pressed on the TiVo remote, the firmware translates it (if needed) and forwards it to the Shield in real time.  BLE bonds are stored in NVS and survive reboots.
 
 ---
 
@@ -27,19 +33,34 @@ When a button is pressed on the TiVo remote, the firmware translates it (if need
 | MCU | [Waveshare ESP32-S3-Zero](https://www.waveshare.com/esp32-s3-zero.htm) (4 MB flash, 2 MB PSRAM) |
 | LED | WS2812 RGB on GPIO 21 — colour-coded by connection state (see LED patterns below) |
 | Boot button | GPIO 0 — hold to manage bonds (see below) |
+| Power | USB-C — must stay powered continuously (see [Power](#power) below) |
+
+---
+
+## Power
+
+The bridge must remain powered for BLE to work — it has no battery.
+
+- Plug into a **USB port that is always on** (wall adapter, powered hub, or TV USB port that stays live in standby).
+- If you power it from the **Shield's USB port**, check that those ports are **not disabled when the Shield sleeps or powers down**. Some Shield models turn off rear USB ports in deep sleep; if power drops, the bridge reboots and you lose the active BLE session until it reconnects.
+- A dedicated wall-powered USB adapter behind the TV is the most reliable option.
 
 ---
 
 ## LED patterns
 
+**Read the pattern, not just the colour** — the blink timing tells you what to do next.
+
 | Colour | Pattern | Meaning |
 |--------|---------|---------|
-| Yellow | Steady | Boot — on while BLE stack initialises (~0.5 s) |
-| Purple | Slow blink (500 ms on/off) | Advertising — waiting for Shield to pair |
-| Orange | Double-flash … pause … repeat | Shield paired, waiting for TiVo remote to bond |
-| Green | 3 quick flashes (once) | Both devices ready — LED then goes off |
+| Yellow | Steady | Boot — BLE stack initialising (a few seconds after reset) |
+| Purple | Slow blink (500 ms on/off) | **Pair the Shield now** — advertising, no Shield bonded yet |
+| Orange | Double-flash … pause … repeat | Shield paired — put TiVo remote in pairing mode |
+| Green | 3 quick flashes (once), then **steady on** | Both devices ready — stays green while paired |
 | White | Single 80 ms flash | Button press forwarded to Shield |
 | Red | Rapid 100 ms flicker | Factory reset hold in progress |
+
+> **Note:** Earlier firmware used the wrong WS2812 channel order (`NEO_GRB`), which made the purple slow-blink state look **cyan** on the Waveshare ESP32-S3-Zero. Reflash if colours still look swapped (e.g. cyan when you expect purple).
 
 ---
 
@@ -69,40 +90,84 @@ Hold the **BOOT** button (GPIO 0) without releasing; actions fire automatically 
 | Back | `0x0224` | Keyboard ESC |
 | OK / Select | `0x0041` | Consumer pass-through |
 | Power | `0x0030` | Consumer pass-through (forced 30 ms release pulse) |
-| Navigation (▲▼◀▶) | `0x0042`–`0x0045` | Consumer pass-through, no repeat guard |
+| Navigation (▲▼◀▶) | `0x0042`–`0x0045` | Consumer pass-through; relaxed dedup (see below) |
 | All other buttons | — | Consumer pass-through |
 
-Keyboard-translated buttons get a forced **30 ms key-up pulse** so the Shield doesn't auto-repeat them.  Navigation keys bypass the bounce guard entirely, letting the TiVo's natural repeat flow through.
+Keyboard-translated buttons get a forced **30 ms key-up pulse** so the Shield doesn't auto-repeat them.  Navigation keys skip the bounce guard and release immediately on all-zero idle reports from the TiVo's dual consumer characteristics, so directional repeat works naturally.  Identical-report hold dedup still applies to all keys.
 
-Custom remaps are stored in NVS and override the table above. Edit `CFG_DEFAULT_KEYMAP` in `src/config.h` to change the firmware defaults.
+To launch apps or change what a button does on the Shield, use **[Button Mapper](#custom-button-mapping-shield-side)** (recommended).  To change what the bridge sends before it reaches the Shield, edit `CFG_DEFAULT_KEYMAP` in `src/config.h` and reflash.
+
+---
+
+## Custom button mapping (Shield side)
+
+Peanut2Shield turns several TiVo buttons into **keyboard F-keys** (see table above).  On the Shield, map those keys to any app with **[Button Mapper](https://play.google.com/store/apps/details?id=flar2.homebutton)** by flar2 (free, Play Store) — no root, no firmware reflash.
+
+### Setup Button Mapper (one time)
+
+1. On the Shield: install **Button Mapper** from the Play Store.
+2. Open it and allow **Accessibility** when prompted: **Settings → Device Preferences → Accessibility → Button Mapper → ON**.
+3. In Button Mapper, choose **Add buttons**.
+4. Press the TiVo button you want to remap (via Peanut2Shield).  It should appear as a key (e.g. **F7** for Live TV).
+5. Turn **Customize** on, set **Single tap** (or **Long press**, if you prefer) to **Applications**, and pick the app.
+6. If the key is not detected or the old action still fires, open **Troubleshooting** in Button Mapper and try **Alternate button handling**.
+
+### Example: Live TV → YouTube TV
+
+The bridge sends **F7** when you press **Live TV** on the TiVo remote.
+
+1. **Add buttons** → press **Live TV** on the TiVo remote → select **F7**.
+2. **Customize → Single tap → Applications → YouTube TV**.
+3. Press **Live TV** again — YouTube TV should open.
+
+Same idea for other mapped buttons:
+
+| TiVo button | Key sent to Shield | Example remap |
+|-------------|-------------------|---------------|
+| TiVo | F4 | Your DVR app |
+| Live TV | F7 | YouTube TV |
+| Guide | F8 | Plex |
+| Info | F9 | Any app |
+| Skip | F10 | Any app |
+| Netflix | F11 | Keep Netflix or map to another app |
+
+Consumer pass-through buttons (OK, nav, volume, etc.) are not F-keys — remap them in Button Mapper the same way if the app detects the consumer key, or change the firmware default in `config.h`.
+
+### Firmware-level remapping (advanced)
+
+Edit `CFG_DEFAULT_KEYMAP` in `src/config.h` if you need the bridge to emit a different key or consumer code, then reflash.  NVS custom remap storage exists in code but has no runtime UI yet; factory reset clears stored custom entries.
 
 ---
 
 ## First-time pairing
 
+After reset, the normal sequence is: **steady yellow** (brief, while BLE starts) → **slow blink** (500 ms on / 500 ms off) → **double-flash** → **3 quick green flashes** → **steady green**.
+
+If you only see a **slow blink** and never noticed yellow, that is fine — slow blink means you are on step 2.
+
 ### 1 — Power on
 
-LED turns **yellow** (steady) while the BLE stack boots (~0.5 s), then immediately switches to **purple slow-blink** — the device is advertising and waiting for the Shield.
+Press **RESET** (or power on). The LED may show **steady yellow** briefly while the BLE stack starts. When it settles into a **slow blink** (lit half a second, dark half a second), the bridge is advertising and waiting for the Shield.
 
-### 2 — Pair the Shield
+### 2 — Pair the Shield  ← do this when you see slow blink
 
 1. On the Shield: **Settings → Remote & Accessories → Add Accessory**
 2. Select **TiVo-Bridge** — it pairs automatically (no PIN)
-3. LED switches to **orange double-flash** — Shield is bonded, now waiting for the TiVo remote
+3. LED switches to **orange double-flash** (two quick flashes, pause, repeat) — Shield is bonded, now waiting for the TiVo remote
 
-### 3 — Pair the TiVo remote
+### 3 — Pair the TiVo remote  ← do this when you see double-flash
 
 1. On the TiVo remote hold **TiVo + Back** until the remote's light flashes to enter pairing mode
 2. The device is already scanning — it connects automatically
-3. LED plays **3 green flashes** then goes off — both devices are ready and translating
+3. LED plays **3 green flashes** then stays **steady green** — both devices are ready and translating
 
 ### Re-pairing
 
 | What to re-pair | Method | LED after |
 |-----------------|--------|-----------|
-| TiVo remote | Hold BOOT 3 s | Orange double-flash (scanning for TiVo) |
-| Shield | Hold BOOT 6 s | Purple slow-blink (advertising for Shield) |
-| Both | Hold BOOT 10 s | Red rapid flicker → 3 green flashes → purple slow-blink |
+| TiVo remote | Hold BOOT 3 s | Orange double-flash (waiting for TiVo) |
+| Shield | Hold BOOT 6 s | Slow blink (advertising for Shield) |
+| Both | Hold BOOT 10 s | Red rapid flicker → 3 green flashes → slow blink |
 
 ---
 
@@ -155,6 +220,8 @@ The ESP32-S3-Zero uses native USB-CDC (no UART bridge chip), so the auto-reset a
 
 ### Monitor
 
+Serial debug output at 115200 baud is useful during pairing and button testing:
+
 ```bash
 pio device monitor -p COM<N> -b 115200
 ```
@@ -164,6 +231,7 @@ pio device monitor -p COM<N> -b 115200
 ## Project structure
 
 ```
+├── LICENSE                     # MIT license
 ├── platformio.ini              # Board, platform, library dependencies
 ├── case/
 │   ├── base.stl                # Bottom tray (3D print)
@@ -198,14 +266,22 @@ Platform: `espressif32`, framework: `arduino`, board: `esp32-s3-devkitc-1` with 
 - **Dual BLE roles** — NimBLE-Arduino runs Central and Peripheral simultaneously on the single radio via time-slicing.
 - **Connection intervals** — Both links target 7.5–15 ms (`minInterval=6, maxInterval=12` in BLE units). The Shield parameter update fires 1 s after CCCD write to avoid disrupting Android's service-discovery sequence.
 - **Key-release pulse** — Keyboard-translated buttons get a forced 30 ms key-up (`CFG_KB_PULSE_MS`) so the Shield doesn't auto-repeat them on hold.
-- **Nav key fast-path** — Navigation keys (0x0042–0x0045) bypass the 300 ms bounce guard and the all-zero guard entirely, so the TiVo's natural repeat rate flows through unthrottled.
+- **Bounce guard** — `CFG_BOUNCE_GUARD_ACTION_MS` suppresses the same usage code arriving too soon after key-up (currently **0 ms**, disabled).  Increase if action buttons double-fire.  Nav keys always skip it.
+- **Nav key fast-path** — Navigation keys (0x0042–0x0045) skip the bounce guard and release immediately on all-zero idle reports instead of waiting for the 50 ms all-zero guard (`CFG_ALL_ZERO_GUARD_MS`).  Identical-report hold dedup still applies to all keys.
 - **Power key pulse** — The Power key (0x0030) also gets a forced 30 ms release rather than relying on the TiVo's key-up timing.
-- **NVS namespaces** — `tivo` (bond address), `keymap` (custom remaps).
-- **LED** — Non-blocking state machine driven by `ledTick()` in `loop()`. Priority: Activity (white) > base pattern. Each state has a distinct colour: yellow=boot, purple=advertising, orange=waiting for TiVo, green=ready, red=factory reset. Global brightness controlled by `CFG_LED_BRIGHTNESS` in `config.h`.
+- **NVS namespaces** — `tivo` (bond address), `keymap` (custom remaps — storage only; no runtime UI yet).
+- **LED** — Non-blocking state machine driven by `ledTick()` in `loop()`. Priority: Activity (white) > base pattern. Each state has a distinct colour: yellow=boot, purple=advertising, orange=waiting for TiVo, green=ready (steady on), red=factory reset. Global brightness controlled by `CFG_LED_BRIGHTNESS` in `config.h`.
 - **All constants** — Every timing value, pin number, BLE parameter, and default keymap entry lives in `src/config.h`. No magic numbers anywhere else.
 
 ---
 
 ## License
 
-MIT — do whatever you like with it.
+[MIT](LICENSE) — do whatever you like with it.
+
+---
+
+## Support
+
+If this project saved you a broken remote or a pile of HDMI switches, consider **[buying me a coffee](https://www.buymeacoffee.com/wnt2fly)** — same link as my [F1-Info-display-Enhanced](https://github.com/Wnt2Fly/F1-Info-display-Enhanced) project.
+

@@ -7,7 +7,9 @@
 #include "hid_peripheral.h"
 
 // ---- WS2812 RGB LED (single pixel on GPIO CFG_LED_PIN) ----
-static Adafruit_NeoPixel sLed(1, CFG_LED_PIN, NEO_GRB + NEO_KHZ800);
+// Waveshare ESP32-S3-Zero uses RGB channel order (not GRB). NEO_GRB makes
+// "purple" advertising colour render as cyan on this board.
+static Adafruit_NeoPixel sLed(1, CFG_LED_PIN, NEO_RGB + NEO_KHZ800);
 
 // Set pixel to an explicit 32-bit colour (0 = off).
 static inline void ledWrite(uint32_t color) {
@@ -32,6 +34,7 @@ enum class LedPattern : uint8_t {
   SlowBlink,    // 500/500 ms — advertising, waiting for Shield to pair
   DoubleFlash,  // flash-flash…pause…flash-flash…long-pause — Shield bonded, no TiVo
   ReadyOnce,    // 3 quick flashes then → sLedAfterOnce
+  Ready,        // steady green — both devices connected and translating
   RapidFlash,   // 100/100 ms — factory-reset hold in progress
   Activity,     // single CFG_LED_FLASH_MS pulse — button forwarded to Shield
 };
@@ -62,7 +65,7 @@ static constexpr int kReadyOnceN =
 
 static LedPattern    sLedBase         = LedPattern::SlowBlink;
 static LedPattern    sLedCurrent      = LedPattern::SlowBlink;
-static LedPattern    sLedAfterOnce    = LedPattern::Off; // target after ReadyOnce finishes
+static LedPattern    sLedAfterOnce    = LedPattern::Ready; // target after ReadyOnce finishes
 static int           sLedStep         = 0;
 static unsigned long sLedAt           = 0;
 static unsigned long sFactoryAnimUntil = 0; // non-zero while RapidFlash timer is running
@@ -146,6 +149,10 @@ static void ledTick() {
       break;
     }
 
+    case LedPattern::Ready:
+      ledWrite(kColReady);
+      break;
+
     case LedPattern::RapidFlash:
       if (sLedStep == 0) {
         ledWrite(kColReset);
@@ -195,12 +202,14 @@ static void syncLedState() {
   static bool sWasBothReady = false;
 
   if (bothReady && !sWasBothReady) {
-    // Both just became ready — play 3-flash confirmation then Off
-    sLedAfterOnce = LedPattern::Off;
+    // Both just became ready — play 3-flash confirmation then steady green
+    sLedAfterOnce = LedPattern::Ready;
     sLedBase      = LedPattern::ReadyOnce;
     sLedCurrent   = LedPattern::ReadyOnce;
     sLedStep      = 0;
     sLedAt        = millis();
+  } else if (bothReady) {
+    ledSetBase(LedPattern::Ready);
   } else if (!bothReady) {
     ledSetBase(hasShield ? LedPattern::DoubleFlash : LedPattern::SlowBlink);
   }
@@ -621,16 +630,18 @@ static void buttonTick() {
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
 
-  Serial.println("\n=== TiVo BLE HID Translator ===");
-
-  // WS2812 RGB LED — yellow while BLE stack initialises
+  // WS2812 RGB LED — yellow while BLE stack initialises (init before delay so
+  // the LED is not dark for the first second while USB serial comes up)
   sLed.begin();
   sLed.setBrightness(CFG_LED_BRIGHTNESS);
   sLed.setPixelColor(0, kColBoot);
   sLed.show();
-  sLedAt = millis();  // start the LED timer relative to actual boot time
+  sLedAt = millis();
+
+  delay(1000);
+
+  Serial.println("\n=== TiVo BLE HID Translator ===");
 
   // Boot button
   pinMode(CFG_BOOT_BTN_PIN, INPUT_PULLUP);

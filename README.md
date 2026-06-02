@@ -106,6 +106,31 @@ LED turns **yellow** (steady) while the BLE stack boots (~0.5 s), then immediate
 
 ---
 
+## 3D-printed case
+
+A snap-together enclosure designed specifically for the **Waveshare ESP32-S3-Zero** is included in the `case/` folder.
+
+### Parts
+
+| File | Description | Suggested material |
+|------|-------------|-------------------|
+| `case/base.stl` | Bottom tray — holds the board, USB-C side opening | Any PLA/PETG |
+| `case/top.stl` | Snap-on lid — engraved button labels, LED hole | Any PLA/PETG |
+| `case/led.stl` | Clear LED light-pipe insert (captured in lid) | Clear/transparent PETG or resin |
+
+### Printing notes
+
+- Print `base.stl` and `top.stl` at **0.2 mm layer height**, 3 perimeters, 15% infill — no supports needed
+- Print `led.stl` in **clear filament** at 0.1 mm layers for best light transmission; orient flat-side down
+- The lid snaps onto the tray — no hardware required
+- The light-pipe press-fits into the lid from below and is retained by a small flange
+
+### Modifying the design
+
+The source file `case/waveshare esp32-s3-zero_case.scad` is a parametric [OpenSCAD](https://openscad.org/) model (v32).  Open it in OpenSCAD and use **Render → Export as STL** with the export variable set to the part you want (`top`, `base`, or `led_insert`).
+
+---
+
 ## Building & flashing
 
 ### Requirements
@@ -139,13 +164,18 @@ pio device monitor -p COM<N> -b 115200
 ## Project structure
 
 ```
-├── platformio.ini          # Board, platform, library dependencies
+├── platformio.ini              # Board, platform, library dependencies
+├── case/
+│   ├── base.stl                # Bottom tray (3D print)
+│   ├── top.stl                 # Snap-on lid (3D print)
+│   ├── led.stl                 # Clear LED light-pipe insert (3D print)
+│   └── waveshare esp32-s3-zero_case.scad   # Parametric OpenSCAD source
 └── src/
-    ├── config.h            # All compile-time constants (edit here to customise)
-    ├── Peanut2Shield.cpp   # Main: BLE central, notify callback, LED engine, button handler
-    ├── hid_peripheral.cpp  # BLE peripheral: HID GATT server, report sending
+    ├── config.h                # All compile-time constants (edit here to customise)
+    ├── Peanut2Shield.cpp       # Main: BLE central, notify callback, LED engine, button handler
+    ├── hid_peripheral.cpp      # BLE peripheral: HID GATT server, report sending
     ├── hid_peripheral.h
-    ├── keymap.cpp          # Translation table, NVS persistence
+    ├── keymap.cpp              # Translation table, NVS persistence
     └── keymap.h
 ```
 

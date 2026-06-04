@@ -95,7 +95,7 @@
 // without waiting for Shield CCCD. Keys log on serial; HID forward only if Shield
 // is actually connected. Reflash after changing.
 // -----------------------------------------------------------------------------
-#define CFG_DEBUG_TIVO_ONLY  1
+#define CFG_DEBUG_TIVO_ONLY  0
 
 // -----------------------------------------------------------------------------
 // Duplicate / bounce suppression

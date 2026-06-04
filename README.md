@@ -162,17 +162,23 @@ Press **RESET** (or power on). The LED may show **steady yellow** briefly while 
 3. Keep **slow blink** while the Shield finishes setup (CCCD negotiation) — do not pair the TiVo yet
 4. LED stays **purple** while the Shield finishes setup, then switches to **deep orange double-flash** — pair the TiVo remote now
 
-### 3 — Pair the TiVo remote  ← do this when you see double-flash
+### 3 — Pair the TiVo remote  ← do this when you see deep orange double-flash
 
-1. On the TiVo remote hold **TiVo + Back** until the remote's light flashes to enter pairing mode
-2. The device is already scanning — it connects automatically
-3. LED plays **3 green flashes** then stays **steady green** — both devices are ready and translating
+The bridge is already scanning. Put the **TiVo Stream 4K** remote in BLE pairing mode:
+
+1. **Clear / reset the remote** (if it was paired elsewhere or acts stuck):
+   - Hold **Power + TiVo** until the activity light turns **red**
+   - Press **Volume Down** three times → light stays **solid red**
+   - Press the **TiVo** button
+2. **Enter pairing mode** — press **any button** on the remote (activity light should show it is searching)
+3. Peanut2Shield connects automatically when it sees `TiVo Remote` advertising HID (`0x1812`)
+4. Keep the link up **5 seconds** — LED stays deep orange briefly, then **3 green flashes** and **steady green**
 
 ### Re-pairing
 
 | What to re-pair | Method | LED after |
 |-----------------|--------|-----------|
-| TiVo remote | Hold BOOT 5 s | Purple quick flash → orange double-flash (waiting for TiVo) |
+| TiVo remote | Hold BOOT 5 s | Purple quick flash → deep orange double-flash; reset remote (Power+TiVo…) then any button for pairing |
 | Shield | Hold BOOT 8 s | Purple double-flash → slow blink (advertising for Shield) |
 | Both | Hold BOOT 10 s | Red quick flash → green quick flash → slow blink |
 

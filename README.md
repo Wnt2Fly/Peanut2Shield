@@ -55,10 +55,14 @@ The bridge must remain powered for BLE to work — it has no battery.
 |--------|---------|---------|
 | Yellow | Steady | Boot — BLE stack initialising (a few seconds after reset) |
 | Purple | Slow blink (500 ms on/off) | **Pair the Shield now** — advertising, no Shield bonded yet |
-| Orange | Double-flash … pause … repeat | Shield paired — put TiVo remote in pairing mode |
+| Orange | Double-flash … pause … repeat | Shield paired — put TiVo remote in pairing mode; also BOOT 4 s warning |
 | Green | 3 quick flashes (once), then **steady on** | Both devices ready — stays green while paired |
 | White | Single 80 ms flash | Button press forwarded to Shield |
-| Red | Rapid 100 ms flicker | Factory reset hold in progress |
+| Yellow | Fast blink (250 ms on/off) | BOOT held — counting toward 4/5/8/10 s |
+| Purple | 3 quick flashes (once) | TiVo bond cleared (BOOT 5 s) |
+| Purple | Double-flash … pause … repeat | Shield bond cleared (BOOT 8 s) |
+| Red | 3 quick flashes (once) | Factory reset starting (BOOT 10 s) |
+| Green | 3 quick flashes (once) | Factory reset confirm → then slow blink |
 
 > **Note:** Earlier firmware used the wrong WS2812 channel order (`NEO_GRB`), which made the purple slow-blink state look **cyan** on the Waveshare ESP32-S3-Zero. Reflash if colours still look swapped (e.g. cyan when you expect purple).
 
@@ -66,13 +70,15 @@ The bridge must remain powered for BLE to work — it has no battery.
 
 ## Boot button actions
 
-Hold the **BOOT** button (GPIO 0) without releasing; actions fire automatically at each threshold:
+Hold the **BOOT** button (GPIO 0) without releasing; actions fire automatically at each threshold. While you hold (before any threshold), the LED **blinks yellow quickly** so you know the timer is running.
 
-| Hold time | Action |
-|-----------|--------|
-| **3 s** | Forget TiVo bond → LED DoubleFlash → restart TiVo scan |
-| **6 s** | Forget Shield bond → LED SlowBlink → restart advertising |
-| **10 s** | Factory reset — forget both bonds, erase keymap NVS → LED rapid flicker → 3-flash → SlowBlink |
+| Hold time | Action | LED after threshold |
+|-----------|--------|---------------------|
+| **(any hold start)** | — | Fast **yellow** blink while counting |
+| **4 s** | Warning only — keep holding | **Orange** double-flash |
+| **5 s** | Forget TiVo bond → restart TiVo scan | **Purple** 3 quick flashes; resumes yellow if still held |
+| **8 s** | Forget Shield bond → restart advertising | **Purple** double-flash |
+| **10 s** | Factory reset — forget both bonds, erase keymap NVS | **Red** 3 quick flashes → **green** 3 quick flashes → slow blink |
 
 ---
 
@@ -166,9 +172,9 @@ Press **RESET** (or power on). The LED may show **steady yellow** briefly while 
 
 | What to re-pair | Method | LED after |
 |-----------------|--------|-----------|
-| TiVo remote | Hold BOOT 3 s | Orange double-flash (waiting for TiVo) |
-| Shield | Hold BOOT 6 s | Slow blink (advertising for Shield) |
-| Both | Hold BOOT 10 s | Red rapid flicker → 3 green flashes → slow blink |
+| TiVo remote | Hold BOOT 5 s | Purple quick flash → orange double-flash (waiting for TiVo) |
+| Shield | Hold BOOT 8 s | Purple double-flash → slow blink (advertising for Shield) |
+| Both | Hold BOOT 10 s | Red quick flash → green quick flash → slow blink |
 
 ---
 

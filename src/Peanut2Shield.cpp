@@ -31,12 +31,14 @@ static const uint32_t kColBoot     = Adafruit_NeoPixel::Color(CFG_LED_COLOR_BOOT
 
 enum class LedPattern : uint8_t {
   Off,
-  SlowBlink,    // 500/500 ms — advertising, waiting for Shield to pair
-  DoubleFlash,  // flash-flash…pause…flash-flash…long-pause — Shield bonded, no TiVo
-  ReadyOnce,    // 3 quick flashes then → sLedAfterOnce
-  Ready,        // steady green — both devices connected and translating
-  RapidFlash,   // 100/100 ms — factory-reset hold in progress
-  Activity,     // single CFG_LED_FLASH_MS pulse — button forwarded to Shield
+  SlowBlink,         // 500/500 ms — advertising, waiting for Shield to pair
+  DoubleFlash,       // orange flash-flash … repeat — BOOT 4 s warning
+  DoubleFlashShield, // purple flash-flash … repeat — BOOT 8 s Shield cleared
+  ReadyOnce,         // 3 quick green flashes then → sLedAfterOnce
+  ConfirmOnce,       // 3 quick flashes in sConfirmColor then → chain or BootHold
+  Ready,             // steady green — both devices connected and translating
+  BootHold,          // fast yellow blink — BOOT held, counting
+  Activity,          // single CFG_LED_FLASH_MS pulse — button forwarded to Shield
 };
 
 struct LedStep { uint16_t ms; bool on; };
@@ -65,12 +67,17 @@ static constexpr int kReadyOnceN =
 
 static LedPattern    sLedBase         = LedPattern::SlowBlink;
 static LedPattern    sLedCurrent      = LedPattern::SlowBlink;
-static LedPattern    sLedAfterOnce    = LedPattern::Ready; // target after ReadyOnce finishes
+static LedPattern    sLedAfterOnce    = LedPattern::Ready;
 static int           sLedStep         = 0;
 static unsigned long sLedAt           = 0;
-static unsigned long sFactoryAnimUntil = 0; // non-zero while RapidFlash timer is running
+static uint32_t      sConfirmColor    = 0;
+static LedPattern    sLedChainNext    = LedPattern::Off;
+static bool          sFactoryLedSeq   = false;
+static bool          sBtnLedOverride  = false;
+static unsigned long sBtnAt           = 0;
+static uint8_t       sBtnLevel          = 0;   // 0=start, 1=4s, 2=5s, 3=8s, 4=10s
+static bool          sBtnHeld           = false;
 
-// Change the background pattern. If Activity is active it takes effect when Activity ends.
 static void ledSetBase(LedPattern p) {
   if (p == sLedBase && sLedCurrent != LedPattern::Activity) return;
   sLedBase = p;
@@ -88,6 +95,29 @@ static void ledForce(LedPattern p) {
     sLedStep    = 0;
     sLedAt      = millis();
   }
+}
+
+// BOOT-button feedback; blocks syncLedState until released or animation finishes.
+static void ledForceButton(LedPattern p) {
+  sBtnLedOverride = true;
+  ledForce(p);
+}
+
+static void ledConfirmOnce(uint32_t color) {
+  sConfirmColor = color;
+  ledForceButton(LedPattern::ConfirmOnce);
+}
+
+static void resumeBootHoldIfPressed() {
+  if (sBtnHeld && sBtnLevel < 4) ledForceButton(LedPattern::BootHold);
+}
+
+static void startFactoryLedSequence() {
+  sFactoryLedSeq  = true;
+  sConfirmColor   = kColReset;
+  sLedChainNext   = LedPattern::ReadyOnce;
+  sLedAfterOnce   = LedPattern::SlowBlink;
+  ledForceButton(LedPattern::ConfirmOnce);
 }
 
 // Single activity flash (highest priority). Returns to base when done.
@@ -135,6 +165,35 @@ static void ledTick() {
       break;
     }
 
+    case LedPattern::DoubleFlashShield: {
+      const LedStep& s = kDoubleFlashSteps[sLedStep];
+      ledWrite(s.on ? kColShield : 0);
+      if (age >= s.ms) { sLedStep = (sLedStep + 1) % kDoubleFlashN; sLedAt = now; }
+      break;
+    }
+
+    case LedPattern::ConfirmOnce: {
+      const LedStep& s = kReadyOnceSteps[sLedStep];
+      ledWrite(s.on ? sConfirmColor : 0);
+      if (age >= s.ms) {
+        sLedAt = now;
+        if (++sLedStep >= kReadyOnceN) {
+          sLedStep = 0;
+          if (sLedChainNext != LedPattern::Off) {
+            LedPattern next = sLedChainNext;
+            sLedChainNext = LedPattern::Off;
+            sLedCurrent   = next;
+            sLedBase      = next;
+          } else if (sBtnHeld) {
+            resumeBootHoldIfPressed();
+          } else {
+            sBtnLedOverride = false;
+          }
+        }
+      }
+      break;
+    }
+
     case LedPattern::ReadyOnce: {
       const LedStep& s = kReadyOnceSteps[sLedStep];
       ledWrite(s.on ? kColReady : 0);
@@ -144,6 +203,10 @@ static void ledTick() {
           sLedBase    = sLedAfterOnce;
           sLedCurrent = sLedAfterOnce;
           sLedStep    = 0;
+          if (sFactoryLedSeq) {
+            sFactoryLedSeq  = false;
+            sBtnLedOverride = false;
+          }
         }
       }
       break;
@@ -153,13 +216,13 @@ static void ledTick() {
       ledWrite(kColReady);
       break;
 
-    case LedPattern::RapidFlash:
+    case LedPattern::BootHold:
       if (sLedStep == 0) {
-        ledWrite(kColReset);
-        if (age >= CFG_LED_RAPID_ON_MS) { sLedStep = 1; sLedAt = now; }
+        ledWrite(kColBoot);
+        if (age >= CFG_LED_BOOT_HOLD_ON_MS) { sLedStep = 1; sLedAt = now; }
       } else {
         ledWrite(0);
-        if (age >= CFG_LED_RAPID_OFF_MS) { sLedStep = 0; sLedAt = now; }
+        if (age >= CFG_LED_BOOT_HOLD_OFF_MS) { sLedStep = 0; sLedAt = now; }
       }
       break;
   }
@@ -176,15 +239,75 @@ static NimBLEAddress           sBondedAddr;
 static bool                    sHasBond     = false;
 static unsigned long           sReconnectAt = 0;
 
-static bool sTivoConnecting = false;
-static bool sTivoReady      = false;
+static Preferences sTivoPrefs;
 
 static const NimBLEUUID HID_SERVICE("1812");
 static const NimBLEUUID REPORT_CHAR("2A4D");
 static const NimBLEUUID REPORT_MAP_CHAR("2A4B");
 static const NimBLEUUID PROTOCOL_MODE_CHAR("2A4E");
 
-static Preferences sTivoPrefs;
+static bool sTivoConnecting = false;
+static bool sTivoReady      = false;
+static unsigned long sTivoRetryAt = 0;
+static unsigned long sShieldReadyAt = 0;
+static bool sWasShieldReadyForTivo = false;
+
+static bool subscribeReports(NimBLERemoteService* hid);
+static void printHex(const uint8_t* data, size_t len);
+
+static void cleanupTivoClient() {
+  if (pClient) {
+    pClient->disconnect();
+    NimBLEDevice::deleteClient(pClient);
+    pClient = nullptr;
+  }
+  targetDevice    = nullptr;
+  sTivoConnecting = false;
+  sTivoReady      = false;
+}
+
+static bool setupTivoHid(NimBLEClient* client) {
+  NimBLERemoteService* hid = client->getService(HID_SERVICE);
+  if (!hid) {
+    Serial.println("[Central] No HID service found.");
+    return false;
+  }
+
+  NimBLERemoteCharacteristic* rmap = hid->getCharacteristic(REPORT_MAP_CHAR);
+  if (rmap && rmap->canRead()) {
+    std::string m = rmap->readValue();
+    Serial.printf("[Central] Report Map len=%u\r\n", m.length());
+    printHex((const uint8_t*)m.data(), m.length());
+  }
+
+  NimBLERemoteCharacteristic* proto = hid->getCharacteristic(PROTOCOL_MODE_CHAR);
+  if (proto && proto->canWrite()) {
+    uint8_t mode = 0x01;
+    proto->writeValue(&mode, 1, false);
+  }
+
+  if (!subscribeReports(hid)) {
+    Serial.println("[Central] No reports subscribed.");
+    return false;
+  }
+
+  return true;
+}
+
+static void saveTiVoBond(NimBLEClient* client) {
+  if (!client) return;
+  sBondedAddr = client->getPeerAddress();
+  sHasBond    = true;
+  sTivoPrefs.begin(CFG_NVS_TIVO_NS, false);
+  sTivoPrefs.putString(CFG_NVS_TIVO_ADDR, sBondedAddr.toString().c_str());
+  sTivoPrefs.end();
+  Serial.printf("[Central] TiVo bond saved: %s\r\n", sBondedAddr.toString().c_str());
+}
+
+static void scheduleTivoRetry() {
+  cleanupTivoClient();
+  sTivoRetryAt = millis() + CFG_TIVO_RETRY_MS;
+}
 
 // Shield side is "done" when CCCD negotiation finished, or bonded but disconnected.
 static bool shieldDoneForTivo() {
@@ -196,6 +319,18 @@ static bool shieldDoneForTivo() {
 static void tryStartTiVoCentral() {
   if (!shieldDoneForTivo()) return;
   if (sTivoReady || sTivoConnecting || pClient != nullptr) return;
+  if (sTivoRetryAt && millis() < sTivoRetryAt) return;
+
+  // Let Shield finish CCCD + initial conn-param update before central work.
+  if (hidShieldReady()) {
+    if (!sWasShieldReadyForTivo) {
+      sWasShieldReadyForTivo = true;
+      sShieldReadyAt         = millis();
+    }
+    if (millis() - sShieldReadyAt < CFG_TIVO_POST_SHIELD_MS) return;
+  } else {
+    sWasShieldReadyForTivo = false;
+  }
 
   if (sHasBond) {
     if (!doConnect) {
@@ -218,9 +353,10 @@ static void tryStartTiVoCentral() {
 // ============================================================
 
 static void syncLedState() {
-  // Let RapidFlash (factory-reset hold) and ReadyOnce run to completion
-  if (sLedCurrent == LedPattern::RapidFlash) return;
+  // BOOT hold / confirmation animations take priority over BLE state.
+  if (sBtnLedOverride) return;
   if (sLedCurrent == LedPattern::ReadyOnce)  return;
+  if (sLedCurrent == LedPattern::ConfirmOnce) return;
 
   bool bothReady = hidShieldReady() && sTivoReady;
   bool shieldDone = shieldDoneForTivo();
@@ -421,16 +557,14 @@ class ClientCallbacks : public NimBLEClientCallbacks {
 
   void onDisconnect(NimBLEClient* client) override {
     Serial.println("[Central] Disconnected from TiVo remote.");
-    pClient         = nullptr;
-    targetDevice    = nullptr;
-    sTivoConnecting = false;
-    sTivoReady      = false;
+    cleanupTivoClient();
 
     if (sHasBond) {
       Serial.println("[Central] Reconnecting in 3 s...");
       sReconnectAt = millis() + CFG_TIVO_RECONNECT_MS;
     } else {
       Serial.println("[Central] No bond — will scan when Shield is ready.");
+      scheduleTivoRetry();
       tryStartTiVoCentral();
     }
   }
@@ -438,44 +572,23 @@ class ClientCallbacks : public NimBLEClientCallbacks {
   void onAuthenticationComplete(ble_gap_conn_desc* desc) override {
     if (!desc->sec_state.encrypted) {
       Serial.println("[Central] Encryption failed. Disconnecting.");
+      scheduleTivoRetry();
       NimBLEDevice::getClientByID(desc->conn_handle)->disconnect();
       return;
     }
     Serial.println("[Central] Encrypted / bonded.");
-
-    NimBLEClient* c = NimBLEDevice::getClientByID(desc->conn_handle);
-    if (c) {
-      sBondedAddr = c->getPeerAddress();
-      sHasBond    = true;
-      sTivoPrefs.begin(CFG_NVS_TIVO_NS, false);
-      sTivoPrefs.putString(CFG_NVS_TIVO_ADDR, sBondedAddr.toString().c_str());
-      sTivoPrefs.end();
-      Serial.printf("[Central] TiVo bond saved: %s\r\n", sBondedAddr.toString().c_str());
-    }
   }
 };
 
 class AdvertisedCallbacks : public NimBLEAdvertisedDeviceCallbacks {
   void onResult(NimBLEAdvertisedDevice* dev) override {
-    bool match = false;
-
-    if (dev->haveServiceUUID() && dev->isAdvertisingService(HID_SERVICE))
-      match = true;
-
-    if (dev->haveName()) {
-      std::string n = dev->getName();
-      if (n.find("TiVo")   != std::string::npos ||
-          n.find("TIVO")   != std::string::npos ||
-          n.find("Remote") != std::string::npos ||
-          n.find("UE878")  != std::string::npos ||
-          n.find("R37023") != std::string::npos)
-        match = true;
+    if (sHasBond) {
+      if (dev->getAddress() != sBondedAddr) return;
+    } else {
+      // First-time pair: require HID service so we don't grab random "Remote" devices.
+      if (!dev->haveServiceUUID() || !dev->isAdvertisingService(HID_SERVICE))
+        return;
     }
-
-    if (sHasBond && dev->getAddress() == sBondedAddr)
-      match = true;
-
-    if (!match) return;
 
     Serial.printf("[Central] Found remote: %s\r\n", dev->toString().c_str());
     NimBLEDevice::getScan()->stop();
@@ -523,39 +636,26 @@ bool connectAndSubscribe(NimBLEAddress addr) {
 
   if (!pClient->connect(addr)) {
     Serial.println("[Central] Connection failed.");
-    NimBLEDevice::deleteClient(pClient);
-    pClient         = nullptr;
-    sTivoConnecting = false;
+    scheduleTivoRetry();
     return false;
   }
 
-  NimBLERemoteService* hid = pClient->getService(HID_SERVICE);
-  if (!hid) {
-    Serial.println("[Central] No HID service found.");
-    pClient->disconnect();
+  // First-time pair: GATT is only usable after bonding/encryption completes.
+  if (!pClient->secureConnection()) {
+    Serial.println("[Central] Pairing/encryption failed.");
+    scheduleTivoRetry();
     return false;
   }
 
-  NimBLERemoteCharacteristic* rmap = hid->getCharacteristic(REPORT_MAP_CHAR);
-  if (rmap && rmap->canRead()) {
-    std::string m = rmap->readValue();
-    Serial.printf("[Central] Report Map len=%u\r\n", m.length());
-    printHex((const uint8_t*)m.data(), m.length());
-  }
-
-  NimBLERemoteCharacteristic* proto = hid->getCharacteristic(PROTOCOL_MODE_CHAR);
-  if (proto && proto->canWrite()) {
-    uint8_t mode = 0x01;
-    proto->writeValue(&mode, 1, false);
-  }
-
-  if (!subscribeReports(hid)) {
-    Serial.println("[Central] No reports subscribed.");
+  if (!setupTivoHid(pClient)) {
+    scheduleTivoRetry();
     return false;
   }
 
+  saveTiVoBond(pClient);
   sTivoConnecting = false;
   sTivoReady      = true;
+  sTivoRetryAt    = 0;
   Serial.println("[Central] Ready — forwarding to Shield.");
   return true;
 }
@@ -572,7 +672,9 @@ static void forgetTiVo() {
   sTivoPrefs.end();
   sHasBond     = false;
   sReconnectAt = 0;
+  sTivoRetryAt = 0;
   doConnect    = false;
+  cleanupTivoClient();
   Serial.println("[BTN] TiVo bond cleared — will scan when Shield is ready.");
   tryStartTiVoCentral();
 }
@@ -591,14 +693,10 @@ static void factoryReset() {
 
 // ============================================================
 // Boot button handler (non-blocking, called every loop iteration)
-// Cumulative hold thresholds: 3 s → 6 s → 10 s
+// Cumulative hold thresholds: 4 s → 5 s → 8 s → 10 s
 // ============================================================
 
 static void buttonTick() {
-  static unsigned long sBtnAt    = 0;
-  static uint8_t       sBtnLevel = 0;   // 0=idle, 1=3s done, 2=6s done, 3=10s done
-  static bool          sBtnHeld  = false;
-
   bool pressed = (digitalRead(CFG_BOOT_BTN_PIN) == LOW);
 
   if (pressed) {
@@ -606,46 +704,41 @@ static void buttonTick() {
       sBtnAt    = millis();
       sBtnLevel = 0;
       sBtnHeld  = true;
+      ledForceButton(LedPattern::BootHold);
     }
 
     unsigned long held = millis() - sBtnAt;
 
-    if (held >= CFG_BTN_FACTORY_MS && sBtnLevel < 3) {
-      sBtnLevel = 3;
+    if (held >= CFG_BTN_FACTORY_MS && sBtnLevel < 4) {
+      sBtnLevel = 4;
       factoryReset();
-      ledForce(LedPattern::RapidFlash);
-      sFactoryAnimUntil = millis() + CFG_FACTORY_ANIM_MS;
+      startFactoryLedSequence();
       Serial.println("[BTN] 10 s: factory reset.");
 
-    } else if (held >= CFG_BTN_SHIELD_MS && sBtnLevel < 2) {
-      sBtnLevel = 2;
+    } else if (held >= CFG_BTN_SHIELD_MS && sBtnLevel < 3) {
+      sBtnLevel = 3;
       forgetShield();
-      ledForce(LedPattern::SlowBlink);    // no Shield bond → slow blink
-      Serial.println("[BTN] 6 s: Shield bond forgotten.");
+      ledForceButton(LedPattern::DoubleFlashShield);
+      Serial.println("[BTN] 8 s: Shield bond forgotten.");
 
-    } else if (held >= CFG_BTN_TIVO_MS && sBtnLevel < 1) {
-      sBtnLevel = 1;
+    } else if (held >= CFG_BTN_TIVO_MS && sBtnLevel < 2) {
+      sBtnLevel = 2;
       forgetTiVo();
-      ledForce(LedPattern::DoubleFlash);  // Shield bonded, no TiVo → double-flash
-      Serial.println("[BTN] 3 s: TiVo bond forgotten.");
+      ledConfirmOnce(kColShield);
+      Serial.println("[BTN] 5 s: TiVo bond forgotten.");
+
+    } else if (held >= CFG_BTN_WARN_MS && sBtnLevel < 1) {
+      sBtnLevel = 1;
+      ledForceButton(LedPattern::DoubleFlash);
+      Serial.println("[BTN] 4 s: warning — keep holding for TiVo clear.");
     }
 
-  } else {
-    if (sBtnHeld) {
-      if (sBtnLevel == 3) {
-        if (sFactoryAnimUntil) {
-          // Timer not yet fired — cancel it and start ReadyOnce → SlowBlink immediately
-          sFactoryAnimUntil = 0;
-          sLedAfterOnce = LedPattern::SlowBlink;
-          sLedBase      = LedPattern::ReadyOnce;
-          sLedCurrent   = LedPattern::ReadyOnce;
-          sLedStep      = 0;
-          sLedAt        = millis();
-        }
-        // If sFactoryAnimUntil == 0, the timer already fired — ReadyOnce is already running
-      }
+  } else if (sBtnHeld) {
+    if (!sFactoryLedSeq && sLedCurrent != LedPattern::ConfirmOnce) {
+      sBtnLedOverride = false;
     }
     sBtnHeld  = false;
+    sBtnLevel = 0;
     sBtnAt    = 0;
   }
 }
@@ -710,16 +803,6 @@ void loop() {
   buttonTick();
   ledTick();
 
-  // RapidFlash timer: transition to ReadyOnce → SlowBlink after CFG_FACTORY_ANIM_MS
-  if (sFactoryAnimUntil && millis() >= sFactoryAnimUntil) {
-    sFactoryAnimUntil = 0;
-    sLedAfterOnce = LedPattern::SlowBlink;
-    sLedBase      = LedPattern::ReadyOnce;
-    sLedCurrent   = LedPattern::ReadyOnce;
-    sLedStep      = 0;
-    sLedAt        = millis();
-  }
-
   syncLedState();
   tryStartTiVoCentral();
 
@@ -769,10 +852,15 @@ void loop() {
 
     if (hasAddr) {
       if (!connectAndSubscribe(addr)) {
-        Serial.println("[Central] Connect failed — will retry scan when appropriate.");
+        Serial.println("[Central] Connect failed — retrying shortly.");
         tryStartTiVoCentral();
       }
     }
+  }
+
+  if (sTivoRetryAt && millis() >= sTivoRetryAt) {
+    sTivoRetryAt = 0;
+    tryStartTiVoCentral();
   }
 
   delay(1);

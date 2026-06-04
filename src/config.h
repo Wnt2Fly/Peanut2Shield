@@ -61,6 +61,12 @@
 // Delay after TiVo disconnects before attempting to reconnect.
 #define CFG_TIVO_RECONNECT_MS  3000
 
+// Delay before retrying TiVo connect/scan after a failed attempt.
+#define CFG_TIVO_RETRY_MS  2000
+
+// Wait after Shield is ready before starting TiVo scan/connect (lets CCCD + conn params settle).
+#define CFG_TIVO_POST_SHIELD_MS  1500
+
 // Delay after the Shield's first CCCD write before requesting fast BLE params.
 // Gives the BLE stack time to finish service discovery before changing intervals.
 #define CFG_SHIELD_FAST_PARAMS_DELAY_MS  1000
@@ -117,6 +123,10 @@
 #define CFG_LED_DBL_PAUSE_MS    200  // short pause between double-flash groups
 #define CFG_LED_DBL_CYCLE_MS   1000  // long end-of-cycle pause before repeating
 
+// BootHold: fast yellow blink while BOOT is held before a threshold fires
+#define CFG_LED_BOOT_HOLD_ON_MS   250
+#define CFG_LED_BOOT_HOLD_OFF_MS  250
+
 // RapidFlash: 100/100 ms on/off during factory-reset hold
 #define CFG_LED_RAPID_ON_MS     100
 #define CFG_LED_RAPID_OFF_MS    100
@@ -132,20 +142,16 @@
 
 #define CFG_BOOT_BTN_PIN          0
 
-// Hold 3 s  -> forget TiVo bond, LED DoubleFlash, restart scan
-#define CFG_BTN_TIVO_MS        3000
-
-// Hold 6 s  -> forget Shield bond, LED SlowBlink, restart advertising
-#define CFG_BTN_SHIELD_MS      6000
-
-// Hold 10 s -> factory reset: forget both bonds + clear keymap NVS
-//             LED RapidFlash while held; 3-flash + SlowBlink on release
+// BOOT hold thresholds (cumulative — keep holding to reach each step):
+//   start     -> fast yellow blink (counting)
+//   4 s       -> orange double-flash (warning only)
+//   5 s       -> forget TiVo + purple quick-flash
+//   8 s       -> forget Shield + purple double-flash
+//  10 s       -> factory reset + red quick-flash → green quick-flash → slow blink
+#define CFG_BTN_WARN_MS        4000
+#define CFG_BTN_TIVO_MS        5000
+#define CFG_BTN_SHIELD_MS      8000
 #define CFG_BTN_FACTORY_MS    10000
-
-// Duration of the RapidFlash animation played after factory reset fires.
-// After this many ms the LED automatically transitions to ReadyOnce → SlowBlink,
-// regardless of whether the button is still held.
-#define CFG_FACTORY_ANIM_MS   800
 
 // -----------------------------------------------------------------------------
 // NVS namespaces and keys
@@ -186,4 +192,5 @@
 #define CFG_BTN_HOLD_TIVO_MS     CFG_BTN_TIVO_MS
 #define CFG_BTN_HOLD_SHIELD_MS   CFG_BTN_SHIELD_MS
 #define CFG_BTN_HOLD_FACTORY_MS  CFG_BTN_FACTORY_MS
+#define CFG_BTN_HOLD_WARN_MS     CFG_BTN_WARN_MS
 

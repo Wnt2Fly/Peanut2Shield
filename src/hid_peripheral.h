@@ -57,5 +57,8 @@ String hidGetShieldAddr();
 bool hidHasShieldBond();
 
 // Scan NimBLE bond store on boot and pre-populate Shield address if a stored
-// bond exists (any bond that is not the TiVo bond).
+// bond exists (any bond that is not the TiVo bond). Also restores from NVS.
 void hidLoadShieldBond(NimBLEAddress tivoAddr, bool hasTivo);
+
+// Save Shield address to NVS after pairing / CCCD setup completes.
+void hidPersistShieldBond();

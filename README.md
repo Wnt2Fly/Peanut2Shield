@@ -22,7 +22,9 @@ The ESP32-S3 simultaneously acts as:
 - **BLE Central** — connects to the TiVo remote as a HID host and receives button reports
 - **BLE Peripheral** — advertises as a HID keyboard + consumer control device to the Shield
 
-When a button is pressed on the TiVo remote, the firmware translates it (if needed) and forwards it to the Shield in real time.  BLE bonds are stored in NVS and survive reboots.
+When a button is pressed on the TiVo remote, the firmware translates it (if needed) and forwards it to the Shield in real time.  Shield and TiVo bond addresses are stored in **NVS**; BLE keys persist across reboot when NimBLE bonding is enabled.
+
+**Updating firmware:** [PlatformIO](#platformio-developers) for developers, or copy **[`usb-drive/`](#usb-reflash-kit-no-platformio)** to a USB stick and run **`flash-update.bat`** (Windows) or **`flash-update.sh`** (Linux) — Python + `esptool` only, no VS Code.
 
 ---
 
@@ -211,29 +213,86 @@ The source file `case/waveshare esp32-s3-zero_case.scad` is a parametric [OpenSC
 
 ## Building & flashing
 
-### Requirements
+Two ways to install or update firmware on the Waveshare ESP32-S3-Zero:
 
-- [PlatformIO](https://platformio.org/) CLI or VS Code extension
-- Waveshare ESP32-S3-Zero connected via USB-C
+| Method | Who it's for | What you need |
+|--------|----------------|---------------|
+| **[USB reflash kit](#usb-reflash-kit-no-platformio)** | Family / another PC | `usb-drive/` on a USB stick, Python 3, `esptool` (`flash-update.bat` or `flash-update.sh`) |
+| **PlatformIO** (below) | Developers editing the code | VS Code + PlatformIO, USB-C cable |
 
-### Build
+After any flash, press the board **RESET** button once. The ESP32-S3-Zero uses native USB-CDC, so upload does not auto-reboot the chip.
+
+---
+
+### USB reflash kit (no PlatformIO)
+
+The **`usb-drive/`** folder is a portable kit — copy the whole directory to a USB stick for updates on another PC (e.g. a family member’s Windows or Linux machine).
+
+**Contents:**
+
+| Path | Purpose |
+|------|---------|
+| `START-HERE.txt` | Short instructions (start here) |
+| `README-REFLASH.txt` / `README-REFLASH-LINUX.txt` | Full Windows / Linux guides |
+| `flash-update.bat` / `flash-update.sh` | Normal update — writes app only at `0x10000` |
+| `flash-full.bat` / `flash-full.sh` | Full chip image — use only if update fails or board is blank |
+| `pack-usb-drive.bat` / `pack-usb-drive.sh` | **Maintainer:** build firmware and refresh `.bin` files in the kit |
+| `firmware/firmware.bin` | App image used by `flash-update` (created by `pack-*`) |
+| `firmware-full/` | Bootloader, partition table, `boot_app0`, app — used by `flash-full` |
+| `vendor/boot_app0.bin` | Bundled Espressif boot stub so packing works without hunting PlatformIO paths |
+
+**Prepare the stick (maintainer, from the project root):**
+
+```bash
+# Windows
+usb-drive\pack-usb-drive.bat
+
+# Linux
+chmod +x usb-drive/pack-usb-drive.sh
+./usb-drive/pack-usb-drive.sh
+```
+
+Then copy the entire **`usb-drive`** folder to the USB drive. Built `.bin` files are not always in git — run `pack-*` after each firmware change before copying to a stick.
+
+**Flash on Windows:**
+
+1. One-time: [Python 3](https://www.python.org/downloads/) (**Add to PATH**), then `pip install esptool`.
+2. Plug the board in with a **data** USB-C cable.
+3. Run **`flash-update.bat`** → enter COM port (Device Manager → Ports, e.g. `COM19`).
+4. Press **RESET** once; plug back into TV power.
+
+**Flash on Linux:**
+
+1. One-time: `pip3 install --user esptool`.
+2. Serial access: `sudo usermod -aG dialout $USER` then log out and back in.
+3. From the `usb-drive` folder:
+   ```bash
+   chmod +x flash-update.sh flash-full.sh
+   ./flash-update.sh
+   ```
+   Default port `/dev/ttyACM0` (Enter), or list devices with `ls /dev/ttyACM*`.
+
+**Pairing:** `flash-update` usually **keeps** Shield and TiVo Bluetooth bonds. **`flash-full`** rewrites the whole flash — expect to **re-pair** both devices (see [First-time pairing](#first-time-pairing)).
+
+---
+
+### PlatformIO (developers)
+
+**Requirements:** [PlatformIO](https://platformio.org/) CLI or VS Code extension, USB-C cable.
+
+**Build:**
 
 ```bash
 pio run
 ```
 
-### Flash
+**Flash:**
 
 ```bash
 pio run --target upload
 ```
 
-After the write reaches 100 %, press the **RESET** button on the board.  
-The ESP32-S3-Zero uses native USB-CDC (no UART bridge chip), so the auto-reset after upload is not supported — a manual reset is required.
-
-### Monitor
-
-Serial debug output at 115200 baud is useful during pairing and button testing:
+**Monitor** (115200 baud — useful while pairing):
 
 ```bash
 pio device monitor -p COM<N> -b 115200
@@ -245,6 +304,14 @@ pio device monitor -p COM<N> -b 115200
 
 ```
 ├── LICENSE                     # MIT license
+├── usb-drive/                  # USB stick reflash kit (see Building & flashing)
+│   ├── START-HERE.txt
+│   ├── flash-update.bat / .sh
+│   ├── flash-full.bat / .sh
+│   ├── pack-usb-drive.bat / .sh
+│   ├── firmware/               # firmware.bin (from pack-*)
+│   ├── firmware-full/          # full flash set (from pack-*)
+│   └── vendor/boot_app0.bin
 ├── platformio.ini              # Board, platform, library dependencies
 ├── case/
 │   ├── base.stl                # Bottom tray (3D print)
@@ -282,7 +349,7 @@ Platform: `espressif32`, framework: `arduino`, board: `esp32-s3-devkitc-1` with 
 - **Bounce guard** — `CFG_BOUNCE_GUARD_ACTION_MS` suppresses the same usage code arriving too soon after key-up (currently **0 ms**, disabled).  Increase if action buttons double-fire.  Nav keys always skip it.
 - **Nav key fast-path** — Navigation keys (0x0042–0x0045) skip the bounce guard and release immediately on all-zero idle reports instead of waiting for the 50 ms all-zero guard (`CFG_ALL_ZERO_GUARD_MS`).  Identical-report hold dedup still applies to all keys.
 - **Power key pulse** — The Power key (0x0030) also gets a forced 30 ms release rather than relying on the TiVo's key-up timing.
-- **NVS namespaces** — `tivo` (bond address), `keymap` (custom remaps — storage only; no runtime UI yet).
+- **NVS namespaces** — `tivo` (address + `trusted` after 5 s link), `shield` (address after CCCD), `keymap` (custom remaps — storage only; no runtime UI yet). NimBLE bond keys use `CONFIG_BT_NIMBLE_NVS_PERSIST` in `platformio.ini`.
 - **LED** — Non-blocking state machine driven by `ledTick()` in `loop()`. Priority: Activity (white) > base pattern. Purple slow blink = Shield pairing; deep orange double-flash = TiVo pairing; green = ready. Global brightness controlled by `CFG_LED_BRIGHTNESS` in `config.h`.
 - **All constants** — Every timing value, pin number, BLE parameter, and default keymap entry lives in `src/config.h`. No magic numbers anywhere else.
 

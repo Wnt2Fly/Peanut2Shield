@@ -14,3 +14,9 @@ Desktop.ini
 
 # Serial monitor logs
 *.log
+
+# USB kit binaries (run usb-drive/pack-usb-drive.bat before copying to a stick)
+usb-drive/firmware/firmware.bin
+usb-drive/firmware-full/*.bin
+!usb-drive/firmware/.gitkeep
+!usb-drive/vendor/boot_app0.bin

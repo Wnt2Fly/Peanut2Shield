@@ -181,6 +181,9 @@
 #define CFG_NVS_TIVO_ADDR    "addr"
 #define CFG_NVS_TIVO_TRUSTED "trusted"
 
+#define CFG_NVS_SHIELD_NS    "shield"
+#define CFG_NVS_SHIELD_ADDR  "addr"
+
 #define CFG_NVS_KEYMAP_NS    "keymap"
 #define CFG_NVS_KEYMAP_CNT   "cnt"
 #define CFG_NVS_KEYMAP_ROW   "r"    // individual row keys are "r0", "r1", ...

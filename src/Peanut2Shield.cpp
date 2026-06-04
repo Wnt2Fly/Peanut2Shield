@@ -591,8 +591,8 @@ void hidNotifyCallback(
 
   sKeyIsDown = true;
   sKeyDownAt = now;
-  memcpy(sLastData, pData, length < sizeof(sLastData) ? length : sizeof(sLastData));
-  sLastLen = length;
+  sLastLen = (length < sizeof(sLastData)) ? length : sizeof(sLastData);
+  memcpy(sLastData, pData, sLastLen);
 
   // ---- Print to serial ----
   Serial.print("BTN raw=[");

@@ -1,7 +1,15 @@
 #include "hid_peripheral.h"
 #include "config.h"
 #include <NimBLEDevice.h>
+#include <Preferences.h>
 #include <Arduino.h>
+
+static Preferences sShieldPrefs;
+
+static bool isTivoBondAddr(const NimBLEAddress& addr, NimBLEAddress tivoAddr, bool hasTivo) {
+  if (!hasTivo) return false;
+  return addr == tivoAddr;
+}
 
 // HID Report Descriptor
 //   Report ID 1 — standard keyboard  (8 bytes: modifier, reserved, key[6])
@@ -68,7 +76,12 @@ class ReportCallbacks : public NimBLECharacteristicCallbacks {
     Serial.printf("[HID] CCCD write — subValue=0x%04X "
                   "(1=notify enabled, 0=disabled)\r\n", subValue);
     // First CCCD write means Android has finished service discovery
-    if (subValue & 0x0001) sShieldNegotiating = false;
+    if (subValue & 0x0001) {
+      if (sShieldNegotiating) {
+        sShieldNegotiating = false;
+        hidPersistShieldBond();
+      }
+    }
   }
 };
 static ReportCallbacks sReportCbs;
@@ -216,16 +229,61 @@ String hidGetShieldAddr() {
 
 bool hidHasShieldBond() { return sHasShieldAddr; }
 
+void hidPersistShieldBond() {
+  if (!sHasShieldAddr) return;
+  sShieldPrefs.begin(CFG_NVS_SHIELD_NS, false);
+  sShieldPrefs.putString(CFG_NVS_SHIELD_ADDR, sShieldAddr.toString().c_str());
+  sShieldPrefs.end();
+  Serial.printf("[HID] Shield bond saved: %s\r\n", sShieldAddr.toString().c_str());
+}
+
 void hidLoadShieldBond(NimBLEAddress tivoAddr, bool hasTivo) {
+  bool fromNvs = false;
+  sShieldPrefs.begin(CFG_NVS_SHIELD_NS, true);
+  String shieldStr = sShieldPrefs.getString(CFG_NVS_SHIELD_ADDR, "");
+  sShieldPrefs.end();
+
+  if (shieldStr.length() > 0) {
+    sShieldAddr    = NimBLEAddress(shieldStr.c_str());
+    sHasShieldAddr = true;
+    fromNvs        = true;
+    Serial.printf("[HID] Shield address from NVS: %s\r\n", shieldStr.c_str());
+  }
+
+  NimBLEAddress bleShield;
+  bool foundBle = false;
   int n = NimBLEDevice::getNumBonds();
   for (int i = 0; i < n; i++) {
     NimBLEAddress addr = NimBLEDevice::getBondedAddress(i);
-    if (hasTivo && addr == tivoAddr) continue;  // skip TiVo bond
-    sShieldAddr    = addr;
-    sHasShieldAddr = true;
-    Serial.printf("[HID] Found stored Shield bond: %s\r\n", addr.toString().c_str());
+    if (isTivoBondAddr(addr, tivoAddr, hasTivo)) continue;
+    bleShield = addr;
+    foundBle  = true;
+    break;
+  }
+
+  if (foundBle) {
+    if (!fromNvs) {
+      sShieldAddr    = bleShield;
+      sHasShieldAddr = true;
+      Serial.printf("[HID] Found stored Shield bond: %s\r\n", bleShield.toString().c_str());
+      hidPersistShieldBond();
+      return;
+    }
+    if (bleShield == sShieldAddr) {
+      Serial.printf("[HID] NimBLE bond matches Shield NVS.\r\n");
+      return;
+    }
+    Serial.printf("[HID] WARNING: NVS Shield %s != NimBLE bond %s — using NVS.\r\n",
+                  sShieldAddr.toString().c_str(), bleShield.toString().c_str());
     return;
   }
+
+  if (fromNvs) {
+    Serial.println("[HID] WARNING: Shield in NVS but no NimBLE bond — re-pair from Shield.");
+    return;
+  }
+
+  sHasShieldAddr = false;
   Serial.println("[HID] No stored Shield bond found.");
 }
 
@@ -336,6 +394,10 @@ void hidForgetShield(NimBLEAddress tivoAddr, bool hasTivo) {
     deleted++;
   }
   sHasShieldAddr = false;
+  sShieldPrefs.begin(CFG_NVS_SHIELD_NS, false);
+  if (sShieldPrefs.isKey(CFG_NVS_SHIELD_ADDR))
+    sShieldPrefs.remove(CFG_NVS_SHIELD_ADDR);
+  sShieldPrefs.end();
   Serial.printf("[HID] Shield bond cleared (%d removed).\r\n", deleted);
 
   delay(CFG_BOND_DELETE_SETTLE_MS);

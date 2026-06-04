@@ -1,0 +1,4 @@
+Peanut2Shield USB flash kit
+Built: Thu 06/04/2026 11:26:18.12
+Board: waveshare-esp32-s3-zero
+Source: s:\Arduino\Peanut2Shield

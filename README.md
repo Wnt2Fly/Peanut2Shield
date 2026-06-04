@@ -47,6 +47,13 @@ The bridge must remain powered for BLE to work — it has no battery.
 - If you power it from the **Shield's USB port**, check that those ports are **not disabled when the Shield sleeps or powers down**. Some Shield models turn off rear USB ports in deep sleep; if power drops, the bridge reboots and you lose the active BLE session until it reconnects.
 - A dedicated wall-powered USB adapter behind the TV is the most reliable option.
 
+**TiVo remote feels sluggish or “buffered”** (press OK, long pause, then action): the ESP32 is often under-powered or starved on the data line, not a pairing bug. Try a **better USB cable** before changing firmware:
+
+- **Data-capable** USB cable (many charge-only cables look fine but fail under load).
+- **Short** run (6 in / 15 cm is ideal behind the TV).
+- If you use **Shield USB-A → USB-C**, use a quality **USB-A to USB-C** adapter/cable rated for **3 A** where possible; thin phone-charge cables are a common cause.
+- Compare with a **wall USB adapter** on the same board — if that feels snappy, swap the cable from the Shield.
+
 ---
 
 ## LED patterns

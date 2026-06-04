@@ -105,6 +105,40 @@ Keyboard-translated buttons get a forced **30 ms key-up pulse** so the Shield do
 
 To launch apps or change what a button does on the Shield, use **[Button Mapper](#custom-button-mapping-shield-side)** (recommended).  To change what the bridge sends before it reaches the Shield, edit `CFG_DEFAULT_KEYMAP` in `src/config.h` and reflash.
 
+If **Power**, **Volume**, **Input**, or **Mute** feel wrong over BLE (no response, wrong device, or fighting the TV), see **[Power & volume via TiVo remote IR](#power--volume-via-tivo-remote-ir-optional)** below.
+
+---
+
+## Power & volume via TiVo remote IR (optional)
+
+Peanut2Shield forwards Power and Volume as BLE consumer keys. On some setups that is unreliable; however if you have an external AV system or soundbar, it may immediately work via CEC. If you have volume/power issues you can leave navigation and app keys on BLE through the bridge, and use the **TiVo remote’s own IR LED** for Power and Volume instead (programmed with a TV code).
+
+The Stream 4K remote is not using the Shield’s IR blaster — it sends infrared from the remote body toward your TV or soundbar.
+
+### Shield TV (CEC)
+
+On the Shield, leave **main HDMI-CEC enabled**, but **turn off CEC for volume and power** so the Shield does not try to handle those buttons over CEC while the TiVo remote is using IR for them.
+
+Exact menu names vary by Shield model and Android TV version; look under **Settings → Device Preferences → Display & Sound** (HDMI-CEC).
+
+### TiVo remote — program IR codes (when CEC is not enough)
+
+Use TiVo’s manual code entry so **Power**, **Volume**, **Mute**, **Input**, and **AV / amplifier** keys on the remote control your TV or soundbar over **IR**. Navigation and app keys still go to the Shield through Peanut2Shield over BLE.
+
+**Code list (in this repo):** [`tivo_programming_codes.txt`](tivo_programming_codes.txt) — setup codes by brand plus step-by-step programming for each key group (TV power, input, volume/mute, audio amplifiers, etc.). Use this when CEC does not handle power, volume, input, or AV reliably.
+
+**Also online:** [TiVoCommunity — disable automatic remote programming](https://www.tivocommunity.com/?threads/heres-how-to-disable-tivos-automatic-remote-programming.577390/) (same idea; the `.txt` file is easier to search offline on a USB stick copy of the project).
+
+**Quick example (TV power — see the file for Input / Vol / Mute):**
+
+1. Find your TV brand in `tivo_programming_codes.txt` and note the **first code** listed.
+2. Hold **TiVo + TV Power** for **3 seconds** until the activity LED stays on.
+3. Enter the code with the number keys; the LED blinks three times and turns off.
+4. Point at the TV and press **TV Power** to test.
+5. If it fails, repeat with the **next code** for that brand until Power (and, per the guide, Input / Vol / Mute) work.
+
+This is independent of Peanut2Shield BLE pairing; program IR after OK, Home, and app keys work over the bridge.
+
 ---
 
 ## Custom button mapping (Shield side)
@@ -304,6 +338,7 @@ pio device monitor -p COM<N> -b 115200
 
 ```
 ├── LICENSE                     # MIT license
+├── tivo_programming_codes.txt  # TiVo IR codes (power, vol, input, AV) if CEC fails
 ├── usb-drive/                  # USB stick reflash kit (see Building & flashing)
 │   ├── START-HERE.txt
 │   ├── flash-update.bat / .sh

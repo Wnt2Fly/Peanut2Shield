@@ -34,7 +34,13 @@
 #define CFG_CONN_MIN_INTERVAL  6   //  6 x 1.25 ms =  7.5 ms
 #define CFG_CONN_MAX_INTERVAL  12  // 12 x 1.25 ms = 15.0 ms
 #define CFG_CONN_LATENCY       0   // peripheral may not skip any events
-#define CFG_CONN_TIMEOUT       51  // 51 x 10 ms = 510 ms supervision timeout
+#define CFG_CONN_TIMEOUT       51  // 51 x 10 ms = 510 ms — Shield peripheral link
+
+// TiVo central link: longer supervision timeout (510 ms is too short — remote drops).
+#define CFG_TIVO_CONN_MIN_INTERVAL  12  // 15 ms
+#define CFG_TIVO_CONN_MAX_INTERVAL    24  // 30 ms
+#define CFG_TIVO_CONN_LATENCY          0
+#define CFG_TIVO_CONN_TIMEOUT        400  // 400 x 10 ms = 4 s
 
 // Seconds before a central connection attempt is abandoned
 #define CFG_CONNECT_TIMEOUT_S  10
@@ -64,6 +70,12 @@
 // Delay before retrying TiVo connect/scan after a failed attempt.
 #define CFG_TIVO_RETRY_MS  2000
 
+// Pause after BLE connect before calling secureConnection (lets link stabilize).
+#define CFG_TIVO_SECURE_DELAY_MS  400
+
+// Connection must stay up this long before the TiVo bond is saved / trusted.
+#define CFG_TIVO_BOND_MIN_UP_MS  5000
+
 // Wait after Shield is ready before starting TiVo scan/connect (lets CCCD + conn params settle).
 #define CFG_TIVO_POST_SHIELD_MS  1500
 
@@ -76,6 +88,14 @@
 
 // Settling delay in hidForgetShield() after bond deletion, before re-advertising.
 #define CFG_BOND_DELETE_SETTLE_MS  300
+
+// -----------------------------------------------------------------------------
+// Debug: TiVo-only test mode (set to 0 for normal operation)
+// When 1: pretends Shield pairing is complete — starts TiVo scan/connect at boot
+// without waiting for Shield CCCD. Keys log on serial; HID forward only if Shield
+// is actually connected. Reflash after changing.
+// -----------------------------------------------------------------------------
+#define CFG_DEBUG_TIVO_ONLY  1
 
 // -----------------------------------------------------------------------------
 // Duplicate / bounce suppression
@@ -103,7 +123,7 @@
 // so change CFG_LED_BRIGHTNESS to make everything brighter/dimmer uniformly.
 #define CFG_LED_COLOR_BOOT      255, 180,   0   // yellow  — initial boot
 #define CFG_LED_COLOR_SHIELD    180,   0, 255   // purple  — advertising, waiting for Shield
-#define CFG_LED_COLOR_TIVO      255,  80,   0   // orange  — Shield bonded, waiting for TiVo
+#define CFG_LED_COLOR_TIVO      255,  42,   0   // deep orange — waiting for TiVo remote
 #define CFG_LED_COLOR_READY       0, 255,   0   // green   — both devices connected
 #define CFG_LED_COLOR_RESET     255,   0,   0   // red     — factory-reset hold in progress
 #define CFG_LED_COLOR_ACTIVITY  255, 255, 255   // white   — button forwarded to Shield
@@ -159,6 +179,7 @@
 
 #define CFG_NVS_TIVO_NS      "tivo"
 #define CFG_NVS_TIVO_ADDR    "addr"
+#define CFG_NVS_TIVO_TRUSTED "trusted"
 
 #define CFG_NVS_KEYMAP_NS    "keymap"
 #define CFG_NVS_KEYMAP_CNT   "cnt"

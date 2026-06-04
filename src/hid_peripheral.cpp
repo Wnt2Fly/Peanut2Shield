@@ -265,6 +265,28 @@ void hidReleaseConsumer() {
   if (sShieldConn) pCsReport->notify();
 }
 
+static bool sAdvPausedForTivo = false;
+
+void hidPauseForTivoCentral() {
+  if (sAdvPausedForTivo) return;
+  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+  if (pAdv && pAdv->isAdvertising()) {
+    pAdv->stop();
+    Serial.println("[HID] Advertising paused for TiVo central.");
+  }
+  sAdvPausedForTivo = true;
+}
+
+void hidResumeAfterTivoCentral() {
+  if (!sAdvPausedForTivo) return;
+  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+  if (pAdv && !pAdv->isAdvertising()) {
+    pAdv->start();
+    Serial.println("[HID] Advertising resumed.");
+  }
+  sAdvPausedForTivo = false;
+}
+
 // Rebuild and start advertising with the correct HID service data.
 // Called after bond deletion or TX power change so the advertising PDU is
 // always fresh — NimBLE can drop it after stack-level resets.

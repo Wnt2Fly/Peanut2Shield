@@ -24,6 +24,12 @@ void hidRequestFastParams();
 // Rebuild and restart advertising (used after TX power change or bond deletion).
 void hidRestartAdvertising();
 
+// Pause peripheral advertising while the TiVo central is connecting/pairing.
+void hidPauseForTivoCentral();
+
+// Resume advertising after TiVo central work finishes or aborts.
+void hidResumeAfterTivoCentral();
+
 // Send a single key-press on the keyboard report, no modifier.
 void hidSendKeyboard(uint8_t modifier, uint8_t keycode);
 

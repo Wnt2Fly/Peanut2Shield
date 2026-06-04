@@ -54,8 +54,8 @@ The bridge must remain powered for BLE to work — it has no battery.
 | Colour | Pattern | Meaning |
 |--------|---------|---------|
 | Yellow | Steady | Boot — BLE stack initialising (a few seconds after reset) |
-| Purple | Slow blink (500 ms on/off) | **Pair the Shield now** — advertising, no Shield bonded yet |
-| Orange | Double-flash … pause … repeat | Shield paired — put TiVo remote in pairing mode; also BOOT 4 s warning |
+| Purple | Slow blink (500 ms on/off) | **Pair the Shield** — advertising, or Shield connected and finishing setup |
+| Deep orange | Double-flash … pause … repeat | **Pair the TiVo remote** — Shield ready, scanning for TiVo; also BOOT 4 s warning |
 | Green | 3 quick flashes (once), then **steady on** | Both devices ready — stays green while paired |
 | White | Single 80 ms flash | Button press forwarded to Shield |
 | Yellow | Fast blink (250 ms on/off) | BOOT held — counting toward 4/5/8/10 s |
@@ -160,7 +160,7 @@ Press **RESET** (or power on). The LED may show **steady yellow** briefly while 
 1. On the Shield: **Settings → Remote & Accessories → Add Accessory**
 2. Select **Peanut2Shield** — it pairs automatically (no PIN)
 3. Keep **slow blink** while the Shield finishes setup (CCCD negotiation) — do not pair the TiVo yet
-4. When setup completes, LED switches to **orange double-flash** — Shield is ready, now waiting for the TiVo remote
+4. LED stays **purple** while the Shield finishes setup, then switches to **deep orange double-flash** — pair the TiVo remote now
 
 ### 3 — Pair the TiVo remote  ← do this when you see double-flash
 
@@ -277,7 +277,7 @@ Platform: `espressif32`, framework: `arduino`, board: `esp32-s3-devkitc-1` with 
 - **Nav key fast-path** — Navigation keys (0x0042–0x0045) skip the bounce guard and release immediately on all-zero idle reports instead of waiting for the 50 ms all-zero guard (`CFG_ALL_ZERO_GUARD_MS`).  Identical-report hold dedup still applies to all keys.
 - **Power key pulse** — The Power key (0x0030) also gets a forced 30 ms release rather than relying on the TiVo's key-up timing.
 - **NVS namespaces** — `tivo` (bond address), `keymap` (custom remaps — storage only; no runtime UI yet).
-- **LED** — Non-blocking state machine driven by `ledTick()` in `loop()`. Priority: Activity (white) > base pattern. Each state has a distinct colour: yellow=boot, purple=advertising, orange=waiting for TiVo, green=ready (steady on), red=factory reset. Global brightness controlled by `CFG_LED_BRIGHTNESS` in `config.h`.
+- **LED** — Non-blocking state machine driven by `ledTick()` in `loop()`. Priority: Activity (white) > base pattern. Purple slow blink = Shield pairing; deep orange double-flash = TiVo pairing; green = ready. Global brightness controlled by `CFG_LED_BRIGHTNESS` in `config.h`.
 - **All constants** — Every timing value, pin number, BLE parameter, and default keymap entry lives in `src/config.h`. No magic numbers anywhere else.
 
 ---

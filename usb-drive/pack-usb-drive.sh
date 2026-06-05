@@ -38,8 +38,11 @@ if [[ -n "${BOOTAPP}" ]]; then
   cp -f "${BOOTAPP}" usb-drive/firmware-full/boot_app0.bin
 fi
 
+FW_VER=$(grep '#define CFG_FIRMWARE_VERSION' src/config.h | sed -n 's/.*"\([^"]*\)".*/\1/p')
+
 {
   echo "Peanut2Shield USB flash kit"
+  echo "Firmware: ${FW_VER}"
   echo "Built: $(date -Iseconds 2>/dev/null || date)"
   echo "Board: waveshare-esp32-s3-zero"
   echo "Source: $(pwd)"

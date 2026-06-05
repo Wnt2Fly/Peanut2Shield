@@ -44,6 +44,8 @@ echo Copying binaries to usb-drive\ ...
 if not exist "usb-drive\firmware" mkdir "usb-drive\firmware"
 if not exist "usb-drive\firmware-full" mkdir "usb-drive\firmware-full"
 
+for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "$m=[regex]::Match((Get-Content 'src/config.h' -Raw),'CFG_FIRMWARE_VERSION\\s+\"([^\"]+)\"'); if($m.Success){$m.Groups[1].Value}"`) do set "FW_VER=%%V"
+
 copy /y "%BUILD%\firmware.bin" "usb-drive\firmware\firmware.bin" >nul
 copy /y "%BUILD%\firmware.bin" "usb-drive\firmware-full\firmware.bin" >nul
 copy /y "%BUILD%\bootloader.bin" "usb-drive\firmware-full\bootloader.bin" >nul
@@ -57,6 +59,7 @@ if defined BOOTAPP (
 )
 
 echo Peanut2Shield USB flash kit> "usb-drive\VERSION.txt"
+if defined FW_VER echo Firmware: %FW_VER%>> "usb-drive\VERSION.txt"
 echo Built: %DATE% %TIME%>> "usb-drive\VERSION.txt"
 echo Board: waveshare-esp32-s3-zero>> "usb-drive\VERSION.txt"
 echo Source: %CD%>> "usb-drive\VERSION.txt"

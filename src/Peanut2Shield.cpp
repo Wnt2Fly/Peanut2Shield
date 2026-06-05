@@ -256,6 +256,7 @@ static bool sTivoNeedSetup  = false;
 static unsigned long sTivoSecureAt = 0;
 static unsigned long sTivoRetryAt = 0;
 static unsigned long sShieldReadyAt = 0;
+static unsigned long sBootMs = 0;
 static bool sWasShieldReadyForTivo = false;
 static bool sTivoSuppressReconnect = false;
 static bool sPendingForgetTiVo = false;
@@ -396,6 +397,12 @@ static void tryStartTiVoCentral() {
   if (sTivoRetryAt && millis() < sTivoRetryAt) return;
 
 #if !CFG_DEBUG_TIVO_ONLY
+  // Let Shield reconnect to the peripheral before TiVo central pauses advertising.
+  if (hidHasShieldBond() && !hidShieldReady() && sBootMs &&
+      (millis() - sBootMs) < CFG_SHIELD_RECONNECT_BOOT_MS) {
+    return;
+  }
+
   // Let Shield finish CCCD + initial conn-param update before central work.
   if (hidShieldReady()) {
     if (!sWasShieldReadyForTivo) {
@@ -818,6 +825,9 @@ static void tivoFinishSetup() {
   Serial.println("[Central] Press remote buttons — BTN lines should appear on serial.");
 #else
   Serial.println("[Central] Waiting to confirm bond before marking ready.");
+  if (!hidShieldReady()) {
+    hidResumeAfterTivoCentral();
+  }
 #endif
 }
 
@@ -956,6 +966,7 @@ static void buttonTick() {
 // ============================================================
 
 void setup() {
+  sBootMs = millis();
   Serial.begin(115200);
 
   // WS2812 RGB LED — yellow while BLE stack initialises (init before delay so
@@ -968,7 +979,7 @@ void setup() {
 
   delay(1000);
 
-  Serial.println("\n=== TiVo BLE HID Translator ===");
+  Serial.printf("\n=== TiVo BLE HID Translator %s ===\r\n", CFG_FIRMWARE_VERSION);
 #if CFG_DEBUG_TIVO_ONLY
   Serial.println("*** DEBUG: CFG_DEBUG_TIVO_ONLY=1 — Shield pairing skipped, TiVo scan at boot ***");
 #endif
@@ -1019,6 +1030,7 @@ void setup() {
 
   // Load Shield bond so the peripheral knows which bond to preserve
   hidLoadShieldBond(sBondedAddr, sHasBond);
+  Serial.flush();
 }
 
 void loop() {

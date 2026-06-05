@@ -12,6 +12,9 @@
 // Name broadcast by the ESP32 over BLE (visible during Shield pairing scan)
 #define CFG_BLE_DEVICE_NAME  "Peanut2Shield"
 
+// Firmware version (serial banner, README, USB kit VERSION.txt)
+#define CFG_FIRMWARE_VERSION  "v1.02"
+
 // BLE appearance value advertised to Android TV.
 // 0x0180 = Generic Remote Control - avoids the PIN-entry flow triggered by
 // the Keyboard appearance (0x03C1) on Android TV.
@@ -78,6 +81,10 @@
 
 // Wait after Shield is ready before starting TiVo scan/connect (lets CCCD + conn params settle).
 #define CFG_TIVO_POST_SHIELD_MS  1500
+
+// After reboot, keep advertising for this long before TiVo central reconnects (Shield bond in NVS).
+// TiVo connect pauses peripheral advertising; without this window Shield often never reconnects.
+#define CFG_SHIELD_RECONNECT_BOOT_MS  8000
 
 // Delay after the Shield's first CCCD write before requesting fast BLE params.
 // Gives the BLE stack time to finish service discovery before changing intervals.

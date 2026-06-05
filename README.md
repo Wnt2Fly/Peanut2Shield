@@ -1,5 +1,7 @@
 # Peanut2Shield — TiVo Remote BLE HID Translator
 
+**Firmware v1.02**
+
 An ESP32-S3 firmware that bridges a **TiVo Stream 4K remote** to an **Nvidia Shield TV** over Bluetooth LE — no WiFi, no app, no cloud.
 
 <a href="https://www.buymeacoffee.com/wnt2fly" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="35" width="auto"></a>
@@ -22,7 +24,7 @@ The ESP32-S3 simultaneously acts as:
 - **BLE Central** — connects to the TiVo remote as a HID host and receives button reports
 - **BLE Peripheral** — advertises as a HID keyboard + consumer control device to the Shield
 
-When a button is pressed on the TiVo remote, the firmware translates it (if needed) and forwards it to the Shield in real time.  Shield and TiVo bond addresses are stored in **NVS**; BLE keys persist across reboot when NimBLE bonding is enabled.
+When a button is pressed on the TiVo remote, the firmware translates it (if needed) and forwards it to the Shield in real time.  Shield and TiVo bond addresses are stored in **NVS**; BLE keys persist across reboot when NimBLE bonding is enabled. After a normal reset or power cycle, the bridge **reconnects to both devices automatically** — Shield first (while advertising), then TiVo — and returns to **steady green** when both links are up.
 
 **Updating firmware:** [PlatformIO](#platformio-developers) for developers, or copy **[`usb-drive/`](#usb-reflash-kit-no-platformio)** to a USB stick and run **`flash-update.bat`** (Windows) or **`flash-update.sh`** (Linux) — Python + `esptool` only, no VS Code.
 
@@ -225,6 +227,16 @@ The bridge is already scanning. Put the **TiVo Stream 4K** remote in BLE pairing
 | Shield | Hold BOOT 8 s | Purple double-flash → slow blink (advertising for Shield) |
 | Both | Hold BOOT 10 s | Red quick flash → green quick flash → slow blink |
 
+### After reboot
+
+If both devices were paired before, you do **not** need to open Shield settings or put the TiVo remote in pairing mode again.
+
+1. Power on or press **RESET** — brief **yellow**, then **slow blink** while the Shield reconnects (up to ~8 s if the Shield was asleep).
+2. TiVo reconnects automatically once the Shield window finishes (or sooner if Shield is already linked).
+3. **Steady green** = both ready; white flash on button press = keys reaching the Shield.
+
+If you see **white flashes** but the Shield does not respond, the TiVo link is up but the Shield is not — wait a few seconds, wake the Shield, or hold **BOOT 8 s** to re-pair the Shield side only.
+
 ---
 
 ## 3D-printed case
@@ -392,6 +404,7 @@ Platform: `espressif32`, framework: `arduino`, board: `esp32-s3-devkitc-1` with 
 - **Nav key fast-path** — Navigation keys (0x0042–0x0045) skip the bounce guard and release immediately on all-zero idle reports instead of waiting for the 50 ms all-zero guard (`CFG_ALL_ZERO_GUARD_MS`).  Identical-report hold dedup still applies to all keys.
 - **Power key pulse** — The Power key (0x0030) also gets a forced 30 ms release rather than relying on the TiVo's key-up timing.
 - **NVS namespaces** — `tivo` (address + `trusted` after 5 s link), `shield` (address after CCCD), `keymap` (custom remaps — storage only; no runtime UI yet). NimBLE bond keys use `CONFIG_BT_NIMBLE_NVS_PERSIST` in `platformio.ini`.
+- **Boot reconnect** — On power-up with both bonds stored, TiVo central reconnect is deferred for `CFG_SHIELD_RECONNECT_BOOT_MS` (8 s) so the Shield can reconnect while peripheral advertising is still running. TiVo connect pauses advertising briefly; once TiVo HID setup finishes, advertising resumes if the Shield is not yet linked. Tune the delay in `config.h` if your Shield needs more time after wake.
 - **LED** — Non-blocking state machine driven by `ledTick()` in `loop()`. Priority: Activity (white) > base pattern. Purple slow blink = Shield pairing; deep orange double-flash = TiVo pairing; green = ready. Global brightness controlled by `CFG_LED_BRIGHTNESS` in `config.h`.
 - **Shield dropout debug** — `CFG_SHIELD_DEBUG=1` in `config.h` logs `[HID-DBG]` on connect/disconnect (uptime, conn interval, supervision timeout, advertising state), TiVo central pause/resume, fast-params timing, 30 s heartbeat, and ESP reset reason at boot. Set `CFG_SHIELD_DEBUG` to `0` to silence.
 

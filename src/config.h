@@ -97,6 +97,11 @@
 // -----------------------------------------------------------------------------
 #define CFG_DEBUG_TIVO_ONLY  0
 
+// Extra serial logging for Shield connect/disconnect and periodic link health.
+// Set to 0 to disable heartbeat and [HID-DBG] lines (normal [HID] lines remain).
+#define CFG_SHIELD_DEBUG              1
+#define CFG_SHIELD_DEBUG_HEARTBEAT_MS  30000
+
 // -----------------------------------------------------------------------------
 // Duplicate / bounce suppression
 // The TiVo remote has two 4-byte consumer characteristics (IDs 0x0C and 0x10).

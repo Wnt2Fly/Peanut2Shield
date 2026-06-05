@@ -984,6 +984,9 @@ void setup() {
 
   hidPeripheralInit();
   keymapInit();
+#if CFG_SHIELD_DEBUG
+  hidShieldDebugLogBootReason();
+#endif
 
   NimBLEScan* scan = NimBLEDevice::getScan();
   scan->setAdvertisedDeviceCallbacks(new AdvertisedCallbacks(), false);
@@ -1050,8 +1053,18 @@ void loop() {
       sShieldParamsAt = millis() + CFG_SHIELD_FAST_PARAMS_DELAY_MS;
       Serial.println("[HID] Shield CCCD confirmed — fast params in 1 s.");
     }
+#if CFG_SHIELD_DEBUG
+    if (!isReady && sWasShieldReady) {
+      Serial.printf("[HID-DBG] Shield left ready (state=%s)\r\n", hidGetShieldState());
+    }
+#endif
     sWasShieldReady = isReady;
   }
+
+#if CFG_SHIELD_DEBUG
+  hidShieldDebugTick(pClient != nullptr && pClient->isConnected(),
+                       sTivoReady, tivoCentralBusy());
+#endif
 
   if (sShieldParamsAt && millis() >= sShieldParamsAt) {
     sShieldParamsAt = 0;

@@ -393,7 +393,7 @@ Platform: `espressif32`, framework: `arduino`, board: `esp32-s3-devkitc-1` with 
 - **Power key pulse** — The Power key (0x0030) also gets a forced 30 ms release rather than relying on the TiVo's key-up timing.
 - **NVS namespaces** — `tivo` (address + `trusted` after 5 s link), `shield` (address after CCCD), `keymap` (custom remaps — storage only; no runtime UI yet). NimBLE bond keys use `CONFIG_BT_NIMBLE_NVS_PERSIST` in `platformio.ini`.
 - **LED** — Non-blocking state machine driven by `ledTick()` in `loop()`. Priority: Activity (white) > base pattern. Purple slow blink = Shield pairing; deep orange double-flash = TiVo pairing; green = ready. Global brightness controlled by `CFG_LED_BRIGHTNESS` in `config.h`.
-- **All constants** — Every timing value, pin number, BLE parameter, and default keymap entry lives in `src/config.h`. No magic numbers anywhere else.
+- **Shield dropout debug** — `CFG_SHIELD_DEBUG=1` in `config.h` logs `[HID-DBG]` on connect/disconnect (uptime, conn interval, supervision timeout, advertising state), TiVo central pause/resume, fast-params timing, 30 s heartbeat, and ESP reset reason at boot. Set `CFG_SHIELD_DEBUG` to `0` to silence.
 
 ---
 

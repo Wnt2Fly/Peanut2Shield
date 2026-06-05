@@ -3,8 +3,20 @@
 #include <NimBLEDevice.h>
 #include <Preferences.h>
 #include <Arduino.h>
+#if CFG_SHIELD_DEBUG
+#include <esp_system.h>
+#endif
 
 static Preferences sShieldPrefs;
+
+#if CFG_SHIELD_DEBUG
+static unsigned long sShieldConnectAt       = 0;
+static unsigned long sShieldFastParamsAt    = 0;
+static unsigned long sShieldLastHeartbeatAt = 0;
+static unsigned long sShieldLastDropAt      = 0;
+static uint16_t      sShieldLastConnItvl    = 0;
+static uint16_t      sShieldLastSupervision = 0;
+#endif
 
 static bool isTivoBondAddr(const NimBLEAddress& addr, NimBLEAddress tivoAddr, bool hasTivo) {
   if (!hasTivo) return false;
@@ -67,6 +79,12 @@ static bool                  sHasShieldAddr       = false;
 static uint16_t              sShieldConnHandle    = BLE_HS_CONN_HANDLE_NONE;
 // true between onConnect and the first CCCD write — Shield is doing service discovery
 static bool                  sShieldNegotiating   = false;
+static bool                  sAdvPausedForTivo      = false;
+
+#if CFG_SHIELD_DEBUG
+static void shieldDebugLogAdv(const char* tag);
+static void shieldDebugLogConnDesc(const char* tag, ble_gap_conn_desc* desc);
+#endif
 
 // Log every CCCD write so we can confirm the Shield is enabling notifications
 class ReportCallbacks : public NimBLECharacteristicCallbacks {
@@ -93,18 +111,47 @@ class PeriphCallbacks : public NimBLEServerCallbacks {
     sShieldAddr         = NimBLEAddress(desc->peer_id_addr);
     sHasShieldAddr      = true;
     sShieldConnHandle   = desc->conn_handle;
+#if CFG_SHIELD_DEBUG
+    sShieldConnectAt = millis();
+#endif
     Serial.printf("[HID] Shield connected: %s handle=%u\r\n",
                   sShieldAddr.toString().c_str(), sShieldConnHandle);
+#if CFG_SHIELD_DEBUG
+    shieldDebugLogConnDesc("Shield connect", desc);
+#endif
     NimBLEDevice::getAdvertising()->stop();
-    // Connection params are updated after a 3 s delay via hidRequestFastParams()
-    // called from loop() — doing it immediately here blocks Android's CCCD setup.
   }
-  void onDisconnect(NimBLEServer* s) override {
+
+  void onDisconnect(NimBLEServer* s, ble_gap_conn_desc* desc) override {
+    unsigned long upMs = 0;
+#if CFG_SHIELD_DEBUG
+    if (sShieldConnectAt) upMs = millis() - sShieldConnectAt;
+    unsigned long sinceFast = sShieldFastParamsAt ? (millis() - sShieldFastParamsAt) : 0;
+    Serial.printf("[HID] Shield disconnected (up %lu ms", upMs);
+    if (sShieldFastParamsAt)
+      Serial.printf(", fast-params %lu ms ago", sinceFast);
+    Serial.printf(")\r\n");
+    shieldDebugLogConnDesc("Shield disconnect", desc);
+    shieldDebugLogAdv("before re-adv");
+    sShieldLastDropAt = millis();
+    sShieldConnectAt  = 0;
+#else
+    Serial.println("[HID] Shield disconnected — re-advertising.");
+#endif
     sShieldConn        = false;
     sShieldNegotiating = false;
     sShieldConnHandle  = BLE_HS_CONN_HANDLE_NONE;
-    Serial.println("[HID] Shield disconnected — re-advertising.");
     NimBLEDevice::getAdvertising()->start();
+#if CFG_SHIELD_DEBUG
+    shieldDebugLogAdv("after re-adv");
+#endif
+  }
+
+  void onMTUChange(uint16_t MTU, ble_gap_conn_desc* desc) override {
+#if CFG_SHIELD_DEBUG
+    Serial.printf("[HID-DBG] Shield MTU=%u handle=%u\r\n", MTU,
+                  desc ? desc->conn_handle : 0);
+#endif
   }
 };
 
@@ -213,10 +260,76 @@ const char* hidGetShieldState() {
   return sHasShieldAddr ? "adv_bonded" : "advertising";
 }
 
+#if CFG_SHIELD_DEBUG
+static void shieldDebugLogAdv(const char* tag) {
+  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+  Serial.printf("[HID-DBG] %s: state=%s conn=%d advPausedForTivo=%d isAdvertising=%d bonded=%d\r\n",
+                tag, hidGetShieldState(), sShieldConn ? 1 : 0,
+                sAdvPausedForTivo ? 1 : 0,
+                (pAdv && pAdv->isAdvertising()) ? 1 : 0,
+                sHasShieldAddr ? 1 : 0);
+}
+
+static void shieldDebugLogConnDesc(const char* tag, ble_gap_conn_desc* desc) {
+  if (!desc) {
+    Serial.printf("[HID-DBG] %s: (no conn desc)\r\n", tag);
+    return;
+  }
+  sShieldLastConnItvl    = desc->conn_itvl;
+  sShieldLastSupervision = desc->supervision_timeout;
+  Serial.printf("[HID-DBG] %s: handle=%u itvl=%u (%.2f ms) latency=%u sup=%u (%.0f ms)\r\n",
+                tag, desc->conn_handle, desc->conn_itvl,
+                desc->conn_itvl * 1.25f, desc->conn_latency,
+                desc->supervision_timeout, desc->supervision_timeout * 10.0f);
+}
+
+void hidShieldDebugLogBootReason() {
+  esp_reset_reason_t r = esp_reset_reason();
+  const char* name = "unknown";
+  switch (r) {
+    case ESP_RST_POWERON:   name = "power-on"; break;
+    case ESP_RST_SW:        name = "software"; break;
+    case ESP_RST_PANIC:     name = "panic"; break;
+    case ESP_RST_INT_WDT:   name = "int_wdt"; break;
+    case ESP_RST_TASK_WDT:  name = "task_wdt"; break;
+    case ESP_RST_WDT:       name = "wdt"; break;
+    case ESP_RST_BROWNOUT:  name = "brownout"; break;
+    case ESP_RST_DEEPSLEEP: name = "deepsleep"; break;
+    default: break;
+  }
+  Serial.printf("[HID-DBG] ESP reset reason: %s (%d)\r\n", name, (int)r);
+}
+
+void hidShieldDebugTick(bool tivoConnected, bool tivoReady, bool tivoCentralBusy) {
+  unsigned long now = millis();
+  if (sShieldLastHeartbeatAt &&
+      (now - sShieldLastHeartbeatAt) < CFG_SHIELD_DEBUG_HEARTBEAT_MS) {
+    return;
+  }
+  sShieldLastHeartbeatAt = now;
+
+  unsigned long upMs = sShieldConnectAt ? (now - sShieldConnectAt) : 0;
+  unsigned long sinceDrop = sShieldLastDropAt ? (now - sShieldLastDropAt) : 0;
+  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+
+  Serial.printf("[HID-DBG] heartbeat: Shield=%s up=%lu ms lastDrop=%lu ms ago "
+                "itvl=%u sup=%u | TiVo conn=%d ready=%d centralBusy=%d | adv=%d paused=%d\r\n",
+                hidGetShieldState(), upMs, sinceDrop,
+                sShieldLastConnItvl, sShieldLastSupervision,
+                tivoConnected ? 1 : 0, tivoReady ? 1 : 0, tivoCentralBusy ? 1 : 0,
+                (pAdv && pAdv->isAdvertising()) ? 1 : 0, sAdvPausedForTivo ? 1 : 0);
+}
+#endif
+
 // Called from loop() 3 s after Shield connects to request faster BLE intervals.
 // Doing this immediately in onConnect blocks Android's CCCD setup.
 void hidRequestFastParams() {
   if (!sShieldConn || sShieldConnHandle == BLE_HS_CONN_HANDLE_NONE) return;
+#if CFG_SHIELD_DEBUG
+  sShieldFastParamsAt = millis();
+  Serial.printf("[HID-DBG] Requesting fast conn params (7.5–15 ms, sup %u ms) handle=%u\r\n",
+                (unsigned)(CFG_CONN_TIMEOUT * 10), sShieldConnHandle);
+#endif
   pServer->updateConnParams(sShieldConnHandle, CFG_CONN_MIN_INTERVAL,
                             CFG_CONN_MAX_INTERVAL, CFG_CONN_LATENCY, CFG_CONN_TIMEOUT);
   Serial.println("[HID] Requested fast conn params (7.5-15 ms) from Shield.");
@@ -323,14 +436,16 @@ void hidReleaseConsumer() {
   if (sShieldConn) pCsReport->notify();
 }
 
-static bool sAdvPausedForTivo = false;
-
 void hidPauseForTivoCentral() {
   if (sAdvPausedForTivo) return;
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
   if (pAdv && pAdv->isAdvertising()) {
     pAdv->stop();
     Serial.println("[HID] Advertising paused for TiVo central.");
+#if CFG_SHIELD_DEBUG
+    Serial.printf("[HID-DBG] pause for TiVo (Shield conn=%d state=%s)\r\n",
+                  sShieldConn ? 1 : 0, hidGetShieldState());
+#endif
   }
   sAdvPausedForTivo = true;
 }
@@ -343,6 +458,9 @@ void hidResumeAfterTivoCentral() {
     Serial.println("[HID] Advertising resumed.");
   }
   sAdvPausedForTivo = false;
+#if CFG_SHIELD_DEBUG
+  shieldDebugLogAdv("TiVo central done");
+#endif
 }
 
 // Rebuild and start advertising with the correct HID service data.

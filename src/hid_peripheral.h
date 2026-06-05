@@ -62,3 +62,11 @@ void hidLoadShieldBond(NimBLEAddress tivoAddr, bool hasTivo);
 
 // Save Shield address to NVS after pairing / CCCD setup completes.
 void hidPersistShieldBond();
+
+#if CFG_SHIELD_DEBUG
+// Log ESP reset reason once at boot (call after Serial.begin).
+void hidShieldDebugLogBootReason();
+
+// Periodic Shield/TiVo/advertising heartbeat; call every loop().
+void hidShieldDebugTick(bool tivoConnected, bool tivoReady, bool tivoCentralBusy);
+#endif

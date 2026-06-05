@@ -44,7 +44,8 @@ echo Copying binaries to usb-drive\ ...
 if not exist "usb-drive\firmware" mkdir "usb-drive\firmware"
 if not exist "usb-drive\firmware-full" mkdir "usb-drive\firmware-full"
 
-for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "$m=[regex]::Match((Get-Content 'src/config.h' -Raw),'CFG_FIRMWARE_VERSION\\s+\"([^\"]+)\"'); if($m.Success){$m.Groups[1].Value}"`) do set "FW_VER=%%V"
+set "FW_VER="
+for /f "tokens=3" %%V in ('findstr /C:"CFG_FIRMWARE_VERSION" src\config.h') do set "FW_VER=%%~V"
 
 copy /y "%BUILD%\firmware.bin" "usb-drive\firmware\firmware.bin" >nul
 copy /y "%BUILD%\firmware.bin" "usb-drive\firmware-full\firmware.bin" >nul

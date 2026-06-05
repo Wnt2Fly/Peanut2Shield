@@ -987,6 +987,21 @@ void setup() {
   // Boot button
   pinMode(CFG_BOOT_BTN_PIN, INPUT_PULLUP);
 
+  Serial.printf("[BOOT] flash=%u KB  PSRAM=%u KB  heap=%u\r\n",
+                (unsigned)(ESP.getFlashChipSize() / 1024),
+                (unsigned)(ESP.getPsramSize() / 1024),
+                (unsigned)ESP.getFreeHeap());
+  if (ESP.getPsramSize() < 512 * 1024) {
+    Serial.println("[BOOT] ERROR: No PSRAM detected — need Waveshare ESP32-S3-Zero (FH4R2, 2 MB PSRAM).");
+    Serial.println("[BOOT] Wrong clone chip or bad flash config. BLE cannot start.");
+    while (true) {
+      ledWrite(kColReset);
+      delay(400);
+      ledWrite(0);
+      delay(400);
+    }
+  }
+
   NimBLEDevice::init(CFG_BLE_DEVICE_NAME);
   NimBLEDevice::setSecurityAuth(true, false, true);  // bond=true, MITM=false, SC=true
   NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);

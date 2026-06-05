@@ -40,7 +40,16 @@ if "%COMPORT%"=="" (
 echo.
 echo Full flash to %COMPORT% ...
 echo.
+echo Erasing entire flash first (clears stale Bluetooth/NVS — fixes reboot loop)...
+python -m esptool --chip esp32s3 --port %COMPORT% --baud 460800 erase_flash
+if errorlevel 1 (
+  echo.
+  echo ERASE FAILED.
+  pause
+  exit /b 1
+)
 
+echo.
 python -m esptool --chip esp32s3 --port %COMPORT% --baud 460800 ^
   write_flash 0x0 firmware-full\bootloader.bin ^
   0x8000 firmware-full\partitions.bin ^

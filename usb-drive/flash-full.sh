@@ -31,7 +31,10 @@ PORT="${PORT:-$DEFAULT_PORT}"
 echo
 echo "Full flash to ${PORT} ..."
 echo
+echo "Erasing entire flash first (clears stale Bluetooth/NVS — fixes reboot loop)..."
+python3 -m esptool --chip esp32s3 --port "${PORT}" --baud 460800 erase_flash
 
+echo
 python3 -m esptool --chip esp32s3 --port "${PORT}" --baud 460800 \
   write_flash 0x0 firmware-full/bootloader.bin \
   0x8000 firmware-full/partitions.bin \

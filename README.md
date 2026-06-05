@@ -34,7 +34,7 @@ When a button is pressed on the TiVo remote, the firmware translates it (if need
 
 | Part | Detail |
 |------|--------|
-| MCU | [Waveshare ESP32-S3-Zero](https://www.waveshare.com/esp32-s3-zero.htm) (4 MB flash, 2 MB PSRAM) |
+| MCU | [Waveshare ESP32-S3-Zero](https://www.waveshare.com/esp32-s3-zero.htm) (chip **ESP32-S3FH4R2** — 4 MB flash, **2 MB PSRAM required**) |
 | LED | WS2812 RGB on GPIO 21 — colour-coded by connection state (see LED patterns below) |
 | Boot button | GPIO 0 — hold to manage bonds (see below) |
 | Power | USB-C — must stay powered continuously (see [Power](#power) below) |
@@ -64,7 +64,7 @@ The bridge must remain powered for BLE to work — it has no battery.
 
 | Colour | Pattern | Meaning |
 |--------|---------|---------|
-| Yellow | Steady | Boot — BLE stack initialising (a few seconds after reset) |
+| Yellow | Steady | Boot — BLE stack initialising (~1–2 s after reset). Normal on **any** power source (PC USB, wall adapter, Shield USB). |
 | Purple | Slow blink (500 ms on/off) | **Pair the Shield** — advertising, or Shield connected and finishing setup |
 | Deep orange | Double-flash … pause … repeat | **Pair the TiVo remote** — Shield ready, scanning for TiVo; also BOOT 4 s warning |
 | Green | 3 quick flashes (once), then **steady on** | Both devices ready — stays green while paired |
@@ -73,7 +73,10 @@ The bridge must remain powered for BLE to work — it has no battery.
 | Purple | 3 quick flashes (once) | TiVo bond cleared (BOOT 5 s) |
 | Purple | Double-flash … pause … repeat | Shield bond cleared (BOOT 8 s) |
 | Red | 3 quick flashes (once) | Factory reset starting (BOOT 10 s) |
+| Red | Slow blink (400 ms on/off) | **Wrong hardware** — no PSRAM detected; needs genuine Waveshare FH4R2 board |
 | Green | 3 quick flashes (once) | Factory reset confirm → then slow blink |
+
+> **Stuck on yellow?** Steady yellow for more than ~5 s usually means a **crash reboot loop** (BLE failed to start), not pairing mode. See [Troubleshooting](#troubleshooting).
 
 > **Note:** Earlier firmware used the wrong WS2812 channel order (`NEO_GRB`), which made the purple slow-blink state look **cyan** on the Waveshare ESP32-S3-Zero. Reflash if colours still look swapped (e.g. cyan when you expect purple).
 
@@ -288,8 +291,9 @@ The **`usb-drive/`** folder is a portable kit — copy the whole directory to a 
 | `START-HERE.txt` | Short instructions (start here) |
 | `README-REFLASH.txt` / `README-REFLASH-LINUX.txt` | Full Windows / Linux guides |
 | `flash-update.bat` / `flash-update.sh` | Normal update — writes app only at `0x10000` |
-| `flash-full.bat` / `flash-full.sh` | Full chip image — use only if update fails or board is blank |
+| `flash-full.bat` / `flash-full.sh` | Full chip image — **erases flash first**, then writes bootloader + partitions + app |
 | `pack-usb-drive.bat` / `pack-usb-drive.sh` | **Maintainer:** build firmware and refresh `.bin` files in the kit |
+| `VERSION.txt` | Firmware version + build date (written by `pack-*`) |
 | `firmware/firmware.bin` | App image used by `flash-update` (created by `pack-*`) |
 | `firmware-full/` | Bootloader, partition table, `boot_app0`, app — used by `flash-full` |
 | `vendor/boot_app0.bin` | Bundled Espressif boot stub so packing works without hunting PlatformIO paths |
@@ -325,13 +329,17 @@ Then copy the entire **`usb-drive`** folder to the USB drive. Built `.bin` files
    ```
    Default port `/dev/ttyACM0` (Enter), or list devices with `ls /dev/ttyACM*`.
 
-**Pairing:** `flash-update` usually **keeps** Shield and TiVo Bluetooth bonds. **`flash-full`** rewrites the whole flash — expect to **re-pair** both devices (see [First-time pairing](#first-time-pairing)).
+**Pairing:** `flash-update` usually **keeps** Shield and TiVo Bluetooth bonds. **`flash-full`** erases the whole chip first — expect to **re-pair** both devices (see [First-time pairing](#first-time-pairing)).
+
+**Updating someone else’s board:** run `pack-usb-drive.bat`, copy the whole `usb-drive` folder to a USB stick, and have them run **`flash-update.bat`** on Windows (Python + `esptool` one-time setup). See `START-HERE.txt` on the stick.
+
+**Board stuck on yellow / won’t boot after flash:** use **`flash-full.bat`** (not `flash-update`) — it clears stale Bluetooth/NVS data that can cause a crash loop.
 
 ---
 
 ### PlatformIO (developers)
 
-**Requirements:** [PlatformIO](https://platformio.org/) CLI or VS Code extension, USB-C cable.
+**Requirements:** [PlatformIO](https://platformio.org/) CLI or VS Code extension, USB-C **data** cable.
 
 **Build:**
 
@@ -339,17 +347,73 @@ Then copy the entire **`usb-drive`** folder to the USB drive. Built `.bin` files
 pio run
 ```
 
-**Flash:**
+**Flash** (close any serial monitor first — the COM port can only be used by one program):
 
 ```bash
 pio run --target upload
 ```
 
+**Recover a crash-looping board** (full erase + upload — same idea as `flash-full.bat`):
+
+```bash
+# Windows — double-click or:
+flash-recover.bat COM20
+
+# Or manually:
+pio run -t erase --upload-port COM20
+pio run -t upload --upload-port COM20
+```
+
 **Monitor** (115200 baud — useful while pairing):
 
 ```bash
-pio device monitor -p COM<N> -b 115200
+pio device monitor -p COM20 -b 115200
 ```
+
+Good boot on serial:
+
+```
+=== TiVo BLE HID Translator v1.02 ===
+[BOOT] flash=4096 KB  PSRAM=2048 KB  heap=...
+[HID] Peripheral ready — advertising as 'Peanut2Shield'.
+```
+
+On PC USB power, expect brief **yellow**, then **purple slow blink** if nothing is paired yet — that is normal. COM is for power and serial only; it does not change LED behaviour.
+
+---
+
+## Troubleshooting
+
+### LED stuck on yellow
+
+| Symptom | Likely cause | Fix |
+|---------|----------------|-----|
+| Yellow **~1–2 s**, then purple blink | Normal boot | Pair Shield if new; ignore if already green behind TV |
+| Yellow **forever** or keeps restarting | BLE crash loop (`ESP_ERR_NO_MEM` on serial) | **`flash-full.bat`** or **`flash-recover.bat COM<N>`** — must **erase** before reflash |
+| **Fast** yellow blink | BOOT button held or stuck | Release BOOT; check case isn’t pressing the button |
+| **Red** slow blink | No PSRAM on chip | Wrong board — need **Waveshare ESP32-S3-Zero (FH4R2)** with 2 MB PSRAM |
+
+### Serial shows `ESP_ERR_NO_MEM` or `Config struct mismatch`
+
+Usually **stale NVS** after a partial flash, or PSRAM not enabled. Fix:
+
+1. Close the serial monitor (Ctrl+C).
+2. Full erase + flash (`flash-recover.bat` or `pio run -t erase` then `upload`).
+3. Press **RESET** once; open monitor and confirm `[BOOT] PSRAM=2048 KB`.
+
+`flash-update` alone does **not** clear NVS — use **`flash-full`** on a board that is crash-looping.
+
+### Upload / flash errors
+
+| Error | Fix |
+|-------|-----|
+| `Cannot configure port` / port missing | Serial monitor still open — close it first |
+| `No serial data received` | Unplug/replug USB, press RESET, try another cable/port |
+| Upload OK but still yellow | Run **erase** then upload again |
+
+### White flashes but Shield ignores buttons
+
+TiVo is connected but Shield is not. Wait ~10 s after reboot (v1.02 reconnect window), wake the Shield, or hold **BOOT 8 s** to re-pair Shield only.
 
 ---
 
@@ -357,11 +421,14 @@ pio device monitor -p COM<N> -b 115200
 
 ```
 ├── LICENSE                     # MIT license
+├── flash-recover.bat           # Windows: erase + upload (recover crash loop)
+├── sdkconfig.defaults          # PSRAM / BLE memory settings for ESP32-S3-Zero
 ├── tivo_programming_codes.txt  # TiVo IR codes (power, vol, input, AV) if CEC fails
 ├── usb-drive/                  # USB stick reflash kit (see Building & flashing)
 │   ├── START-HERE.txt
+│   ├── VERSION.txt               # Firmware version (from pack-*)
 │   ├── flash-update.bat / .sh
-│   ├── flash-full.bat / .sh
+│   ├── flash-full.bat / .sh      # erase flash, then full image
 │   ├── pack-usb-drive.bat / .sh
 │   ├── firmware/               # firmware.bin (from pack-*)
 │   ├── firmware-full/          # full flash set (from pack-*)
@@ -391,12 +458,13 @@ pio device monitor -p COM<N> -b 115200
 | [adafruit/Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) | `^1.12.0` |
 | Preferences | bundled with ESP32 Arduino core |
 
-Platform: `espressif32`, framework: `arduino`, board: `esp32-s3-devkitc-1` with `board_build.flash_size = 4MB`.
+Platform: `espressif32`, framework: `arduino`, board: `esp32-s3-devkitc-1` with `board_build.flash_size = 4MB`, `board_build.arduino.memory_type = qio_qspi`, and `sdkconfig.defaults` for quad PSRAM. Firmware version: `CFG_FIRMWARE_VERSION` in `src/config.h`.
 
 ---
 
 ## Technical notes
 
+- **PSRAM required** — Dual BLE (central + peripheral) needs the **2 MB PSRAM** on the ESP32-S3FH4R2. At boot the firmware logs `[BOOT] PSRAM=… KB`; values under ~512 KB halt with a red blink.
 - **Dual BLE roles** — NimBLE-Arduino runs Central and Peripheral simultaneously on the single radio via time-slicing.
 - **Connection intervals** — Both links target 7.5–15 ms (`minInterval=6, maxInterval=12` in BLE units). The Shield parameter update fires 1 s after CCCD write to avoid disrupting Android's service-discovery sequence.
 - **Key-release pulse** — Keyboard-translated buttons get a forced 30 ms key-up (`CFG_KB_PULSE_MS`) so the Shield doesn't auto-repeat them on hold.

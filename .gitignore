@@ -14,15 +14,9 @@
 usb-drive/VERSION.txt
 usb-drive/firmware/update/firmware.bin
 usb-drive/firmware/full/*.bin
-usb-drive/firmware/firmware.bin
-usb-drive/firmware-full/
 
 # USB kit — bundled flasher (downloaded by pack/bundle-flasher.bat)
 usb-drive/tools/win/espflash.exe
 usb-drive/tools/win/espflash-dl.zip
-usb-drive/vendor/espflash.exe
-
-# Accidental nested output from an old bundle-flasher path
-usb-drive/pack/usb-drive/
 
 # Keep: usb-drive/pack/vendor/boot_app0.bin (vendored, small)

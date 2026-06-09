@@ -22,7 +22,6 @@ set "KIT=usb-drive"
 set "BOOTAPP="
 
 if exist "%KIT%\pack\vendor\boot_app0.bin" set "BOOTAPP=%KIT%\pack\vendor\boot_app0.bin"
-if not defined BOOTAPP if exist "%KIT%\vendor\boot_app0.bin" set "BOOTAPP=%KIT%\vendor\boot_app0.bin"
 
 if not defined BOOTAPP if defined PIO_HOME (
   set "PIO=%PIO_HOME%\.platformio"

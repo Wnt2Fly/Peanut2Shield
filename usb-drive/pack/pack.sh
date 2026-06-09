@@ -12,8 +12,6 @@ PIO="${HOME}/.platformio"
 BOOTAPP=""
 if [[ -f "${KIT}/pack/vendor/boot_app0.bin" ]]; then
   BOOTAPP="${KIT}/pack/vendor/boot_app0.bin"
-elif [[ -f "${KIT}/vendor/boot_app0.bin" ]]; then
-  BOOTAPP="${KIT}/vendor/boot_app0.bin"
 else
   for d in "${PIO}"/packages/framework-arduinoespressif32*; do
     if [[ -f "${d}/tools/partitions/boot_app0.bin" ]]; then

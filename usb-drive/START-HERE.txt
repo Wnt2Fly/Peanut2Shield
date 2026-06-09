@@ -1,43 +1,20 @@
-Peanut2Shield — USB reflash kit
-================================
+Peanut2Shield — USB update kit
+=================================
 
-WHAT'S IN HERE
-  firmware\firmware.bin       — app only (normal update)
-  firmware-full\              — full chip image (new board / won't boot)
-  flash-update.bat / .sh      — run for most updates (keeps Shield/TiVo pairing)
-  flash-full.bat / .sh        — only if update fails or first-time factory flash
-  README-REFLASH.txt          — Windows step-by-step
-  README-REFLASH-LINUX.txt    — Linux step-by-step
+WINDOWS (no install needed)
+  1. Read QUICK-START.txt
+  2. Double-click UPDATE.bat
 
-BEFORE YOU START
-  1. Windows or Linux PC
-  2. USB-C data cable (not charge-only)
-  3. One-time: Python 3 + esptool
-     Windows: https://www.python.org/downloads/  (Add to PATH), then: pip install esptool
-     Linux:   pip3 install --user esptool  (see README-REFLASH-LINUX.txt)
+LINUX
+  1. Read docs/linux.txt
+  2. Run ./UPDATE.sh
 
-QUICK UPDATE (pairing usually stays)
-  1. Unplug Peanut2Shield from the TV; plug into the PC with USB-C.
-
-  Windows:
-  2. Double-click flash-update.bat
-  3. Type the COM port (Device Manager → Ports, e.g. COM19)
-
-  Linux:
-  2. Open a terminal in this folder
-  3. Run:  chmod +x flash-update.sh && ./flash-update.sh
-  4. Port is usually /dev/ttyACM0 (Enter for default)
-
-  5. Wait for "SUCCESS"
-  6. Press the small RESET button on the board once
-  7. Plug back into TV power (wall adapter is best)
-
-AFTER FLASH
-  Purple slow blink  = pair Shield (Settings → Add accessory → Peanut2Shield)
-  Orange double-flash = pair TiVo remote (Power+TiVo, Vol- x3, TiVo, any button)
-  Solid green = working
-
-DO NOT hold the tiny BOOT button unless you mean to clear pairing:
-  5 sec = forget TiVo    8 sec = forget Shield    10 sec = factory reset
-
-Questions? Call / text the person who gave you this USB stick.
+WHAT'S ON THIS STICK
+  UPDATE.bat / UPDATE.sh     — start here
+  QUICK-START.txt            — short Windows guide
+  VERSION.txt                — firmware version
+  firmware/update/           — app-only image (normal update)
+  firmware/full/             — complete image (yellow LED / new board)
+  tools/                     — flasher scripts + espflash.exe (Windows)
+  docs/                      — full Windows and Linux guides
+  pack/                      — for the person who builds this kit (ignore)

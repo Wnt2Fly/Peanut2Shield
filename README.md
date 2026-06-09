@@ -26,7 +26,7 @@ The ESP32-S3 simultaneously acts as:
 
 When a button is pressed on the TiVo remote, the firmware translates it (if needed) and forwards it to the Shield in real time.  Shield and TiVo bond addresses are stored in **NVS**; BLE keys persist across reboot when NimBLE bonding is enabled. After a normal reset or power cycle, the bridge **reconnects to both devices automatically** — Shield first (while advertising), then TiVo — and returns to **steady green** when both links are up.
 
-**Updating firmware:** [PlatformIO](#platformio-developers) for developers, or copy **[`usb-drive/`](#usb-reflash-kit-no-platformio)** to a USB stick and run **`flash-update.bat`** (Windows) or **`flash-update.sh`** (Linux) — Python + `esptool` only, no VS Code.
+**Updating firmware:** [PlatformIO](#platformio-developers) for developers, or copy **[`usb-drive/`](#usb-update-kit-no-platformio)** to a USB stick — **`UPDATE.bat`** (Windows) or **`UPDATE.sh`** (Linux).
 
 ---
 
@@ -273,67 +273,61 @@ Two ways to install or update firmware on the Waveshare ESP32-S3-Zero:
 
 | Method | Who it's for | What you need |
 |--------|----------------|---------------|
-| **[USB reflash kit](#usb-reflash-kit-no-platformio)** | Family / another PC | `usb-drive/` on a USB stick, Python 3, `esptool` (`flash-update.bat` or `flash-update.sh`) |
+| **[USB update kit](#usb-update-kit-no-platformio)** | Family / another PC | `usb-drive/` — **`UPDATE.bat`** (Windows, no Python) |
 | **PlatformIO** (below) | Developers editing the code | VS Code + PlatformIO, USB-C cable |
 
 After any flash, press the board **RESET** button once. The ESP32-S3-Zero uses native USB-CDC, so upload does not auto-reboot the chip.
 
 ---
 
-### USB reflash kit (no PlatformIO)
+### USB update kit (no PlatformIO)
 
-The **`usb-drive/`** folder is a portable kit — copy the whole directory to a USB stick for updates on another PC (e.g. a family member’s Windows or Linux machine).
+Copy the entire **`usb-drive/`** folder to a USB stick. On **Windows, no Python** is required (`tools/win/espflash.exe` is bundled).
 
-**Contents:**
+**Layout:**
 
-| Path | Purpose |
-|------|---------|
-| `START-HERE.txt` | Short instructions (start here) |
-| `README-REFLASH.txt` / `README-REFLASH-LINUX.txt` | Full Windows / Linux guides |
-| `flash-update.bat` / `flash-update.sh` | Normal update — writes app only at `0x10000` |
-| `flash-full.bat` / `flash-full.sh` | Full chip image — **erases flash first**, then writes bootloader + partitions + app |
-| `pack-usb-drive.bat` / `pack-usb-drive.sh` | **Maintainer:** build firmware and refresh `.bin` files in the kit |
-| `VERSION.txt` | Firmware version + build date (written by `pack-*`) |
-| `firmware/firmware.bin` | App image used by `flash-update` (created by `pack-*`) |
-| `firmware-full/` | Bootloader, partition table, `boot_app0`, app — used by `flash-full` |
-| `vendor/boot_app0.bin` | Bundled Espressif boot stub so packing works without hunting PlatformIO paths |
-
-**Prepare the stick (maintainer, from the project root):**
-
-```bash
-# Windows
-usb-drive\pack-usb-drive.bat
-
-# Linux
-chmod +x usb-drive/pack-usb-drive.sh
-./usb-drive/pack-usb-drive.sh
+```
+usb-drive/
+├── UPDATE.bat              ← double-click (Windows)
+├── UPDATE.sh               ← Linux menu
+├── QUICK-START.txt         ← short user guide
+├── START-HERE.txt
+├── VERSION.txt
+├── docs/
+│   ├── windows.txt
+│   └── linux.txt
+├── firmware/
+│   ├── update/firmware.bin   — app-only (normal update)
+│   └── full/                 — bootloader + partitions + app
+├── tools/
+│   ├── win/                  — espflash.exe + flash scripts
+│   └── linux/                — flash scripts (needs pip esptool)
+└── pack/                     — maintainer: build + bundle (ignore on stick)
+    ├── pack.bat / pack.sh
+    └── vendor/boot_app0.bin
 ```
 
-Then copy the entire **`usb-drive`** folder to the USB drive. Built `.bin` files are not always in git — run `pack-*` after each firmware change before copying to a stick.
+**Build the kit (maintainer, from project root):**
 
-**Flash on Windows:**
+```bat
+pack-usb-drive.bat
+rem or:  usb-drive\pack\pack.bat
+```
 
-1. One-time: [Python 3](https://www.python.org/downloads/) (**Add to PATH**), then `pip install esptool`.
-2. Plug the board in with a **data** USB-C cable.
-3. Run **`flash-update.bat`** → enter COM port (Device Manager → Ports, e.g. `COM19`).
-4. Press **RESET** once; plug back into TV power.
+```bash
+./pack-usb-drive.sh
+rem or:  ./usb-drive/pack/pack.sh
+```
 
-**Flash on Linux:**
+Then copy **`usb-drive/`** to the stick. Re-run after each firmware change.
 
-1. One-time: `pip3 install --user esptool`.
-2. Serial access: `sudo usermod -aG dialout $USER` then log out and back in.
-3. From the `usb-drive` folder:
-   ```bash
-   chmod +x flash-update.sh flash-full.sh
-   ./flash-update.sh
-   ```
-   Default port `/dev/ttyACM0` (Enter), or list devices with `ls /dev/ttyACM*`.
+**End user (Windows):** double-click **`UPDATE.bat`** → see **`QUICK-START.txt`**.
 
-**Pairing:** `flash-update` usually **keeps** Shield and TiVo Bluetooth bonds. **`flash-full`** erases the whole chip first — expect to **re-pair** both devices (see [First-time pairing](#first-time-pairing)).
+**End user (Linux):** `./UPDATE.sh` → see **`docs/linux.txt`** (Python + esptool one-time).
 
-**Updating someone else’s board:** run `pack-usb-drive.bat`, copy the whole `usb-drive` folder to a USB stick, and have them run **`flash-update.bat`** on Windows (Python + `esptool` one-time setup). See `START-HERE.txt` on the stick.
+**Pairing:** option 1 usually keeps bonds. Option 2 (full fix) erases the chip — re-pair Shield and TiVo.
 
-**Board stuck on yellow / won’t boot after flash:** use **`flash-full.bat`** (not `flash-update`) — it clears stale Bluetooth/NVS data that can cause a crash loop.
+**Yellow LED stuck:** use **UPDATE.bat → option 2** (full erase + flash).
 
 ---
 
@@ -353,7 +347,7 @@ pio run
 pio run --target upload
 ```
 
-**Recover a crash-looping board** (full erase + upload — same idea as `flash-full.bat`):
+**Recover a crash-looping board** (full erase + upload — same as UPDATE.bat option 2):
 
 ```bash
 # Windows — double-click or:
@@ -389,7 +383,7 @@ On PC USB power, expect brief **yellow**, then **purple slow blink** if nothing 
 | Symptom | Likely cause | Fix |
 |---------|----------------|-----|
 | Yellow **~1–2 s**, then purple blink | Normal boot | Pair Shield if new; ignore if already green behind TV |
-| Yellow **forever** or keeps restarting | BLE crash loop (`ESP_ERR_NO_MEM` on serial) | **`flash-full.bat`** or **`flash-recover.bat COM<N>`** — must **erase** before reflash |
+| Yellow **forever** or keeps restarting | BLE crash loop (`ESP_ERR_NO_MEM` on serial) | **`UPDATE.bat` → option 2** or **`flash-recover.bat COM<N>`** |
 | **Fast** yellow blink | BOOT button held or stuck | Release BOOT; check case isn’t pressing the button |
 | **Red** slow blink | No PSRAM on chip | Wrong board — need **Waveshare ESP32-S3-Zero (FH4R2)** with 2 MB PSRAM |
 
@@ -401,7 +395,7 @@ Usually **stale NVS** after a partial flash, or PSRAM not enabled. Fix:
 2. Full erase + flash (`flash-recover.bat` or `pio run -t erase` then `upload`).
 3. Press **RESET** once; open monitor and confirm `[BOOT] PSRAM=2048 KB`.
 
-`flash-update` alone does **not** clear NVS — use **`flash-full`** on a board that is crash-looping.
+Normal update alone does **not** clear NVS — use **UPDATE.bat option 2** on a board that is crash-looping.
 
 ### Upload / flash errors
 
@@ -424,15 +418,16 @@ TiVo is connected but Shield is not. Wait ~10 s after reboot (v1.02 reconnect wi
 ├── flash-recover.bat           # Windows: erase + upload (recover crash loop)
 ├── sdkconfig.defaults          # PSRAM / BLE memory settings for ESP32-S3-Zero
 ├── tivo_programming_codes.txt  # TiVo IR codes (power, vol, input, AV) if CEC fails
-├── usb-drive/                  # USB stick reflash kit (see Building & flashing)
+├── pack-usb-drive.bat          # wrapper → usb-drive/pack/pack.bat
+├── usb-drive/                  # USB stick update kit
+│   ├── UPDATE.bat / UPDATE.sh
+│   ├── QUICK-START.txt
 │   ├── START-HERE.txt
-│   ├── VERSION.txt               # Firmware version (from pack-*)
-│   ├── flash-update.bat / .sh
-│   ├── flash-full.bat / .sh      # erase flash, then full image
-│   ├── pack-usb-drive.bat / .sh
-│   ├── firmware/               # firmware.bin (from pack-*)
-│   ├── firmware-full/          # full flash set (from pack-*)
-│   └── vendor/boot_app0.bin
+│   ├── VERSION.txt
+│   ├── docs/windows.txt / linux.txt
+│   ├── firmware/update/ / full/
+│   ├── tools/win/ / linux/
+│   └── pack/pack.bat / pack.sh
 ├── platformio.ini              # Board, platform, library dependencies
 ├── case/
 │   ├── base.stl                # Bottom tray (3D print)

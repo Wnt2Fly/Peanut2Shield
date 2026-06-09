@@ -2,7 +2,7 @@ Peanut2Shield — Reflash guide (Linux)
 ======================================
 
 Hardware: Waveshare ESP32-S3-Zero in the Peanut2Shield case
-Firmware: see VERSION.txt
+Firmware: see VERSION.txt in the kit root
 
 -----------------------------------------------------------------------------
 ONE-TIME SETUP
@@ -19,41 +19,24 @@ Install Python 3 and esptool. Examples:
     sudo dnf install python3 python3-pip
     pip3 install --user esptool
 
-Serial port access (avoid sudo for every flash):
+Serial port access:
 
     sudo usermod -aG dialout "$USER"
     # log out and back in (or reboot)
 
 -----------------------------------------------------------------------------
-FIND THE SERIAL PORT
+UPDATE
 -----------------------------------------------------------------------------
-
-1. Plug the board in with a USB-C data cable.
-2. Run:
-      ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null
-   Common names: /dev/ttyACM0 (native USB on ESP32-S3-Zero)
-
------------------------------------------------------------------------------
-OPTION A — UPDATE (recommended)
------------------------------------------------------------------------------
-
-Shield and TiVo pairing usually survives this flash.
 
   cd /path/to/usb-drive
-  chmod +x flash-update.sh    # once, if needed
-  ./flash-update.sh
+  chmod +x UPDATE.sh tools/linux/*.sh   # once
+  ./UPDATE.sh
 
-Press Enter for the default port, or type e.g. /dev/ttyACM0.
+Pick 1 (normal) or 2 (full fix). Default port: /dev/ttyACM0
 
------------------------------------------------------------------------------
-OPTION B — FULL FLASH
------------------------------------------------------------------------------
-
-Use if update fails or the board never ran Peanut2Shield.
-
-  ./flash-full.sh
-
-You will likely need to pair Shield and TiVo again.
+Or run directly:
+  ./tools/linux/flash-update.sh
+  ./tools/linux/flash-full.sh
 
 -----------------------------------------------------------------------------
 TROUBLESHOOTING
@@ -64,19 +47,16 @@ TROUBLESHOOTING
 
 "Failed to connect"
   → Unplug/replug USB, press RESET, retry.
-  → Hold BOOT, tap RESET, release BOOT (download mode), retry.
-
-esptool not found after pip install --user
-  → Run:  python3 -m esptool ...
-  → Or add ~/.local/bin to PATH.
 
 -----------------------------------------------------------------------------
-REPACK THE USB KIT (MAINTAINER)
+BUILD THIS KIT (MAINTAINER)
 -----------------------------------------------------------------------------
 
-From the project root on Linux:
+From the project root:
 
-  chmod +x usb-drive/pack-usb-drive.sh
-  ./usb-drive/pack-usb-drive.sh
+  chmod +x usb-drive/pack/pack.sh
+  ./usb-drive/pack/pack.sh
 
-Then copy the whole usb-drive folder to the stick.
+Copy the whole usb-drive folder to the stick.
+
+Windows sticks include espflash.exe (no Python). Linux uses esptool via pip.

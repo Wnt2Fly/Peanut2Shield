@@ -1,0 +1,68 @@
+Peanut2Shield — Reflash guide (Windows)
+========================================
+
+Hardware: Waveshare ESP32-S3-Zero in the Peanut2Shield case
+Firmware: see VERSION.txt in the kit root
+
+-----------------------------------------------------------------------------
+NO PYTHON REQUIRED
+-----------------------------------------------------------------------------
+
+Double-click UPDATE.bat (or read QUICK-START.txt).
+
+  1 — Normal update (keeps Shield/TiVo pairing most of the time)
+  2 — Full fix (LED stuck yellow, new board, or update failed)
+
+-----------------------------------------------------------------------------
+FIND THE COM PORT
+-----------------------------------------------------------------------------
+
+1. Plug the board into the PC with USB-C (data cable).
+2. Open Device Manager (Win+X → Device Manager).
+3. Expand "Ports (COM & LPT)".
+4. Note the port named something like "USB Serial Device (COM19)".
+
+The flasher may list ports when you run UPDATE.bat.
+
+-----------------------------------------------------------------------------
+OPTION A — NORMAL UPDATE
+-----------------------------------------------------------------------------
+
+1. UPDATE.bat → press 1
+2. Enter COM port (e.g. COM19)
+3. Press RESET when done; plug back into TV power
+
+-----------------------------------------------------------------------------
+OPTION B — FULL FIX
+-----------------------------------------------------------------------------
+
+Erases the chip first — re-pair Shield and TiVo afterward.
+
+1. UPDATE.bat → press 2
+2. Enter COM port
+3. Press RESET when done
+
+Advanced: tools\win\flash-update.bat or flash-full.bat
+
+-----------------------------------------------------------------------------
+TROUBLESHOOTING
+-----------------------------------------------------------------------------
+
+"No flasher found"
+  → Run pack\pack.bat on the build PC (bundles tools\win\espflash.exe).
+
+"Failed to connect"
+  → Unplug/replug USB, press RESET, try another cable/port.
+  → Use option 2 if the LED was stuck on yellow.
+
+-----------------------------------------------------------------------------
+BUILD THIS KIT (MAINTAINER)
+-----------------------------------------------------------------------------
+
+From the project folder:
+
+  usb-drive\pack\pack.bat
+
+Copy the entire usb-drive folder to a USB stick.
+
+Linux: docs\linux.txt

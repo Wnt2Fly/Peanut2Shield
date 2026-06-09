@@ -8,7 +8,7 @@ Firmware: see VERSION.txt in the kit root
 NO PYTHON REQUIRED
 -----------------------------------------------------------------------------
 
-Double-click UPDATE.bat (or read QUICK-START.txt).
+Double-click UPDATE.bat (or read START-HERE.txt).
 
   1 — Normal update (keeps Shield/TiVo pairing most of the time)
   2 — Full fix (LED stuck yellow, new board, or update failed)

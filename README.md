@@ -290,8 +290,7 @@ Copy the entire **`usb-drive/`** folder to a USB stick. On **Windows, no Python*
 usb-drive/
 ├── UPDATE.bat              ← double-click (Windows)
 ├── UPDATE.sh               ← Linux menu
-├── QUICK-START.txt         ← short user guide
-├── START-HERE.txt
+├── START-HERE.txt          ← user guide (read this)
 ├── VERSION.txt
 ├── docs/
 │   ├── windows.txt
@@ -321,7 +320,7 @@ rem or:  ./usb-drive/pack/pack.sh
 
 Then copy **`usb-drive/`** to the stick. Re-run after each firmware change.
 
-**End user (Windows):** double-click **`UPDATE.bat`** → see **`QUICK-START.txt`**.
+**End user (Windows):** double-click **`UPDATE.bat`** → see **`START-HERE.txt`** if you want steps first.
 
 **End user (Linux):** `./UPDATE.sh` → see **`docs/linux.txt`** (Python + esptool one-time).
 
@@ -421,7 +420,6 @@ TiVo is connected but Shield is not. Wait ~10 s after reboot (v1.02 reconnect wi
 ├── pack-usb-drive.bat          # wrapper → usb-drive/pack/pack.bat
 ├── usb-drive/                  # USB stick update kit
 │   ├── UPDATE.bat / UPDATE.sh
-│   ├── QUICK-START.txt
 │   ├── START-HERE.txt
 │   ├── VERSION.txt
 │   ├── docs/windows.txt / linux.txt

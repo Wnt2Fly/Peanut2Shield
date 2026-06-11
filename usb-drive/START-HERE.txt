@@ -20,12 +20,18 @@ WINDOWS — do this
 WHICH OPTION?
 -------------
   1  Normal update
-     Remote was working; you are installing a new version.
-     Usually keeps Shield and TiVo pairing.
+     ONLY if the remote was working and the LED was NOT stuck on yellow.
+     Keeps Shield and TiVo pairing when it works.
 
-  2  Full fix
-     LED stays YELLOW forever, or this is a brand-new board.
+  2  Full fix  <-- use this if anything went wrong
+     LED stays YELLOW forever, remote stopped working, or first-time setup.
      Clears the chip and re-flashes everything. Re-pair Shield + TiVo.
+
+  Check VERSION.txt on the stick — must say v1.06 for the yellow-LED boot fix.
+  If option 1 was used and the LED is now solid yellow, run option 2 with a v1.06 stick.
+
+  Maintainer: run pack-usb-drive.bat on the build PC before copying usb-drive to a stick.
+  The stick must contain firmware\update\firmware.bin (not just the scripts).
 
 AFTER FLASH
 -----------
@@ -35,6 +41,15 @@ AFTER FLASH
 
 DO NOT hold the tiny BOOT button unless you mean to clear pairing:
   5 sec = forget TiVo    8 sec = forget Shield    10 sec = factory reset
+
+NO COM PORT AFTER REBOOT?
+-------------------------
+Windows lost the port — common after a bad flash or yellow crash loop.
+
+  1. Unplug 10 sec, try another USB port on the PC (data cable!).
+  2. Device Manager — port may have a NEW number (COM19 not COM15).
+  3. Still nothing? Hold BOOT, plug in USB, release BOOT after 2 sec.
+     Then run UPDATE.bat option 2 right away.
 
 LINUX
 -----

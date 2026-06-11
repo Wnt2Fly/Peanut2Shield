@@ -10,8 +10,12 @@ NO PYTHON REQUIRED
 
 Double-click UPDATE.bat (or read START-HERE.txt).
 
-  1 — Normal update (keeps Shield/TiVo pairing most of the time)
-  2 — Full fix (LED stuck yellow, new board, or update failed)
+  1 — Normal update (only if remote was already working)
+  2 — Full fix (yellow LED stuck, remote dead, or new board)
+
+If the LED is yellow or the update failed, use option 2 — not option 1.
+Option 1 does not erase old Bluetooth settings and can cause a yellow crash loop
+on older firmware. Option 2 always clears the chip first.
 
 -----------------------------------------------------------------------------
 FIND THE COM PORT
@@ -47,6 +51,26 @@ Advanced: tools\win\flash-update.bat or flash-full.bat
 -----------------------------------------------------------------------------
 TROUBLESHOOTING
 -----------------------------------------------------------------------------
+
+"No COM port" / Windows does not show COMxx after reboot
+  The USB port often comes back — try in order:
+  1. Unplug USB, wait 10 seconds, plug into a different PC port (not a hub).
+  2. Open Device Manager → View → Show hidden devices.
+     Look under "Ports (COM & LPT)" AND "Universal Serial Bus devices".
+     The board may appear with a new number (was COM15, now COM19).
+  3. Download mode (board looks dead, no COM at all):
+     - Unplug USB
+     - Hold the small BOOT button on the board
+     - Plug USB back in while still holding BOOT
+     - Release BOOT after 2 seconds
+     - A COM port should appear — run UPDATE.bat option 2 immediately
+  4. If a COM port appears briefly then vanishes: yellow crash loop.
+     Use option 2 with a v1.06 stick (see VERSION.txt).
+
+"Flash says SUCCESS but LED still yellow"
+  → VERSION.txt on the stick is probably old. PlatformIO upload uses the latest
+    build; UPDATE.bat uses whatever .bin files are on the USB stick.
+  → On the build PC: pack-usb-drive.bat, copy usb-drive to the stick, option 2.
 
 "No flasher found"
   → Run pack\pack.bat on the build PC (bundles tools\win\espflash.exe).

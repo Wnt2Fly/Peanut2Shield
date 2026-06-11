@@ -1,5 +1,6 @@
 #include "keymap.h"
 #include "config.h"
+#include "devlog.h"
 #include <Preferences.h>
 #include <string.h>
 
@@ -23,7 +24,7 @@ void keymapInit() {
     snprintf(key, sizeof(key), CFG_NVS_KEYMAP_ROW "%d", i);
     sPrefs.getBytes(key, &sCustom[i], sizeof(RemapEntry));
   }
-  Serial.printf("[Keymap] Loaded %d custom remap(s).\r\n", sCustomCount);
+  DEV_LOGF("[Keymap] Loaded %d custom remap(s).\r\n", sCustomCount);
 }
 
 static void nvsSave() {

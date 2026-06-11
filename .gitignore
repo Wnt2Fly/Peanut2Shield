@@ -14,6 +14,7 @@
 usb-drive/VERSION.txt
 usb-drive/firmware/update/firmware.bin
 usb-drive/firmware/full/*.bin
+usb-drive/firmware/full/combined.bin
 
 # USB kit — bundled flasher (downloaded by pack/bundle-flasher.bat)
 usb-drive/tools/win/espflash.exe

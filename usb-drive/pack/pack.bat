@@ -59,7 +59,18 @@ if defined BOOTAPP (
 ) else (
   echo WARNING: boot_app0.bin not found — full flash will not work.
   echo          update flash is still OK.
+  goto :skip_merge
 )
+
+echo Building combined full-flash image...
+call pio pkg exec --package tool-esptoolpy -- esptool.py --chip esp32s3 merge_bin -o "%KIT%\firmware\full\combined.bin" --flash_size 4MB 0x0 "%BUILD%\bootloader.bin" 0x8000 "%BUILD%\partitions.bin" 0xe000 "%KIT%\firmware\full\boot_app0.bin" 0x10000 "%BUILD%\firmware.bin"
+if errorlevel 1 (
+  echo WARNING: could not build combined.bin — multi-step full flash will be used.
+  del "%KIT%\firmware\full\combined.bin" 2>nul
+) else (
+  echo combined.bin OK
+)
+:skip_merge
 
 echo Peanut2Shield USB update kit> "%KIT%\VERSION.txt"
 if defined FW_VER echo Firmware: %FW_VER%>> "%KIT%\VERSION.txt"

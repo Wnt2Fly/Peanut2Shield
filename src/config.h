@@ -13,7 +13,7 @@
 #define CFG_BLE_DEVICE_NAME  "Peanut2Shield"
 
 // Firmware version (serial banner, README, USB kit VERSION.txt)
-#define CFG_FIRMWARE_VERSION  "v1.02"
+#define CFG_FIRMWARE_VERSION  "v1.06"
 
 // BLE appearance value advertised to Android TV.
 // 0x0180 = Generic Remote Control - avoids the PIN-entry flow triggered by
@@ -133,7 +133,7 @@
 // LED colours — R, G, B at full (255) scale.
 // All channels are divided by CFG_LED_BRIGHTNESS/255 at runtime,
 // so change CFG_LED_BRIGHTNESS to make everything brighter/dimmer uniformly.
-#define CFG_LED_COLOR_BOOT      255, 180,   0   // yellow  — initial boot
+#define CFG_LED_COLOR_BOOT      255, 180,   0   // yellow  — boot blink (BLE init)
 #define CFG_LED_COLOR_SHIELD    180,   0, 255   // purple  — advertising, waiting for Shield
 #define CFG_LED_COLOR_TIVO      255,  42,   0   // deep orange — waiting for TiVo remote
 #define CFG_LED_COLOR_READY       0, 255,   0   // green   — both devices connected
@@ -199,6 +199,12 @@
 #define CFG_NVS_KEYMAP_NS    "keymap"
 #define CFG_NVS_KEYMAP_CNT   "cnt"
 #define CFG_NVS_KEYMAP_ROW   "r"    // individual row keys are "r0", "r1", ...
+
+// Bump when sdkconfig BLE/PSRAM layout changes (legacy; fwver string is primary).
+#define CFG_NVS_SYS_NS       "peanut2"
+#define CFG_NVS_SYS_FWVER    "fwver"
+#define CFG_NVS_SYS_BLELAY   "blelay"
+#define CFG_NVS_BLE_LAYOUT   2
 
 // -----------------------------------------------------------------------------
 // Default keymap translations  (X-macro pattern)

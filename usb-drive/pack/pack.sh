@@ -38,6 +38,18 @@ cp -f "${BUILD}/partitions.bin" "${KIT}/firmware/full/"
 if [[ -n "${BOOTAPP}" ]]; then
   cp -f "${BOOTAPP}" "${KIT}/firmware/full/boot_app0.bin"
   cp -f "${BOOTAPP}" "${KIT}/pack/vendor/boot_app0.bin"
+  echo "Building combined full-flash image..."
+  if pio pkg exec --package tool-esptoolpy -- esptool.py --chip esp32s3 merge_bin \
+      -o "${KIT}/firmware/full/combined.bin" --flash_size 4MB \
+      0x0 "${BUILD}/bootloader.bin" \
+      0x8000 "${BUILD}/partitions.bin" \
+      0xe000 "${KIT}/firmware/full/boot_app0.bin" \
+      0x10000 "${BUILD}/firmware.bin"; then
+    echo "combined.bin OK"
+  else
+    echo "WARNING: could not build combined.bin"
+    rm -f "${KIT}/firmware/full/combined.bin"
+  fi
 fi
 
 FW_VER=$(grep '#define CFG_FIRMWARE_VERSION' src/config.h | sed -n 's/.*"\([^"]*\)".*/\1/p')

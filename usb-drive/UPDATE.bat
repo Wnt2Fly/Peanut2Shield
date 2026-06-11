@@ -10,8 +10,29 @@ echo  ============================================
 echo.
 type VERSION.txt 2>nul
 echo.
-echo  1  Normal update     (keeps Shield/TiVo pairing)
-echo  2  Full fix           (yellow LED stuck / first-time setup)
+
+if not exist "firmware\update\firmware.bin" (
+  echo  ERROR: No firmware on this stick.
+  echo  On the build PC run:  pack-usb-drive.bat
+  echo  Then copy the whole usb-drive folder to this USB stick again.
+  echo.
+  pause
+  exit /b 1
+)
+
+if not exist "tools\win\espflash.exe" (
+  echo  ERROR: Missing tools\win\espflash.exe
+  echo  On the build PC run:  pack-usb-drive.bat
+  echo.
+  pause
+  exit /b 1
+)
+
+echo  1  Normal update     (remote was working — keeps pairing)
+echo  2  Full fix           (YELLOW LED stuck / new board / update failed)
+echo.
+echo  If the LED is yellow or the remote stopped working, use 2 not 1.
+echo  After any flash: press RESET once, then unplug from PC for wall power.
 echo  Q  Quit
 echo.
 

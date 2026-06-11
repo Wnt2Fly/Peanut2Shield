@@ -2,7 +2,11 @@
 #include <NimBLEDevice.h>
 #include <Preferences.h>
 #include <Adafruit_NeoPixel.h>
+#include <nvs_flash.h>
+#include <nvs.h>
+#include <esp_timer.h>
 #include "config.h"
+#include "devlog.h"
 #include "keymap.h"
 #include "hid_peripheral.h"
 
@@ -37,6 +41,7 @@ enum class LedPattern : uint8_t {
   ReadyOnce,         // 3 quick green flashes then → sLedAfterOnce
   ConfirmOnce,       // 3 quick flashes in sConfirmColor then → chain or BootHold
   Ready,             // steady green — both devices connected and translating
+  BootBlink,         // yellow 500/500 ms — BLE stack initialising at boot
   BootHold,          // fast yellow blink — BOOT held, counting
   Activity,          // single CFG_LED_FLASH_MS pulse — button forwarded to Shield
 };
@@ -216,6 +221,16 @@ static void ledTick() {
       ledWrite(kColReady);
       break;
 
+    case LedPattern::BootBlink:
+      if (sLedStep == 0) {
+        ledWrite(kColBoot);
+        if (age >= CFG_LED_BLINK_ON_MS) { sLedStep = 1; sLedAt = now; }
+      } else {
+        ledWrite(0);
+        if (age >= CFG_LED_BLINK_OFF_MS) { sLedStep = 0; sLedAt = now; }
+      }
+      break;
+
     case LedPattern::BootHold:
       if (sLedStep == 0) {
         ledWrite(kColBoot);
@@ -226,6 +241,32 @@ static void ledTick() {
       }
       break;
   }
+}
+
+// Hardware timer keeps boot blink alive while NimBLE init blocks the loop task.
+static esp_timer_handle_t sLedTimer = nullptr;
+
+static void ledTimerCb(void* /*arg*/) { ledTick(); }
+
+static void ledPumpStart() {
+  if (sLedTimer) return;
+  const esp_timer_create_args_t args = {
+      .callback = &ledTimerCb,
+      .arg      = nullptr,
+      .dispatch_method = ESP_TIMER_TASK,
+      .name     = "ledpump",
+      .skip_unhandled_events = true,
+  };
+  if (esp_timer_create(&args, &sLedTimer) == ESP_OK) {
+    esp_timer_start_periodic(sLedTimer, 10 * 1000);  // 10 ms
+  }
+}
+
+static void ledPumpStop() {
+  if (!sLedTimer) return;
+  esp_timer_stop(sLedTimer);
+  esp_timer_delete(sLedTimer);
+  sLedTimer = nullptr;
 }
 
 // ============================================================
@@ -308,14 +349,14 @@ static void cleanupTivoClient() {
 static bool setupTivoHid(NimBLEClient* client) {
   NimBLERemoteService* hid = client->getService(HID_SERVICE);
   if (!hid) {
-    Serial.println("[Central] No HID service found.");
+    DEV_LOGLN("[Central] No HID service found.");
     return false;
   }
 
   NimBLERemoteCharacteristic* rmap = hid->getCharacteristic(REPORT_MAP_CHAR);
   if (rmap && rmap->canRead()) {
     std::string m = rmap->readValue();
-    Serial.printf("[Central] Report Map len=%u\r\n", m.length());
+    DEV_LOGF("[Central] Report Map len=%u\r\n", m.length());
     printHex((const uint8_t*)m.data(), m.length());
   }
 
@@ -326,7 +367,7 @@ static bool setupTivoHid(NimBLEClient* client) {
   }
 
   if (!subscribeReports(hid)) {
-    Serial.println("[Central] No reports subscribed.");
+    DEV_LOGLN("[Central] No reports subscribed.");
     return false;
   }
 
@@ -342,11 +383,11 @@ static void saveTiVoBond(NimBLEClient* client) {
   sTivoPrefs.putString(CFG_NVS_TIVO_ADDR, sBondedAddr.toString().c_str());
   sTivoPrefs.putBool(CFG_NVS_TIVO_TRUSTED, true);
   sTivoPrefs.end();
-  Serial.printf("[Central] TiVo bond confirmed: %s\r\n", sBondedAddr.toString().c_str());
+  DEV_LOGF("[Central] TiVo bond confirmed: %s\r\n", sBondedAddr.toString().c_str());
 }
 
 static void invalidateTiVoBond(const char* reason) {
-  Serial.printf("[Central] Clearing TiVo bond — %s\r\n", reason);
+  DEV_LOGF("[Central] Clearing TiVo bond — %s\r\n", reason);
   if (sHasBond) {
     NimBLEDevice::deleteBond(sBondedAddr);
     sHasBond = false;
@@ -418,9 +459,9 @@ static void tryStartTiVoCentral() {
   if (sHasBond && sTivoBondTrusted) {
     if (!doConnect) {
 #if CFG_DEBUG_TIVO_ONLY
-      Serial.println("[Central] DEBUG — reconnecting to trusted TiVo bond...");
+      DEV_LOGLN("[Central] DEBUG — reconnecting to trusted TiVo bond...");
 #else
-      Serial.println("[Central] Reconnecting to trusted TiVo bond...");
+      DEV_LOGLN("[Central] Reconnecting to trusted TiVo bond...");
 #endif
       doConnect = true;
     }
@@ -431,18 +472,18 @@ static void tryStartTiVoCentral() {
     static bool sWarnedUntrusted = false;
     if (!sWarnedUntrusted) {
       sWarnedUntrusted = true;
-      Serial.println("[Central] Unconfirmed TiVo addr — reset remote, any btn for pairing.");
+      DEV_LOGLN("[Central] Unconfirmed TiVo addr — reset remote, any btn for pairing.");
     }
   }
 
   NimBLEScan* scan = NimBLEDevice::getScan();
   if (scan && !scan->isScanning()) {
 #if CFG_DEBUG_TIVO_ONLY
-    Serial.println("[Central] DEBUG — scanning for TiVo (pairing mode on remote).");
+    DEV_LOGLN("[Central] DEBUG — scanning for TiVo (pairing mode on remote).");
 #else
-    Serial.println("[Central] Shield ready — scanning for TiVo (pairing mode on remote).");
+    DEV_LOGLN("[Central] Shield ready — scanning for TiVo (pairing mode on remote).");
 #endif
-    Serial.println("[Central] Remote: Power+TiVo → Vol− x3 → TiVo → any button (pairing mode).");
+    DEV_LOGLN("[Central] Remote: Power+TiVo → Vol− x3 → TiVo → any button (pairing mode).");
     sScanLogAt = millis();
     scan->start(0, nullptr, false);
   }
@@ -489,8 +530,8 @@ static void syncLedState() {
 // ============================================================
 
 static void printHex(const uint8_t* data, size_t len) {
-  for (size_t i = 0; i < len; i++) Serial.printf("%02X ", data[i]);
-  Serial.println();
+  for (size_t i = 0; i < len; i++) DEV_LOGF("%02X ", data[i]);
+  DEV_LOGLN();
 }
 
 static const struct { uint16_t code; const char* name; } kTiVoNames[] = {
@@ -602,26 +643,26 @@ void hidNotifyCallback(
   memcpy(sLastData, pData, sLastLen);
 
   // ---- Print to serial ----
-  Serial.print("BTN raw=[");
-  for (size_t i = 0; i < length; i++) Serial.printf("%02X ", pData[i]);
-  Serial.print("] ");
+  DEV_LOG("BTN raw=[");
+  for (size_t i = 0; i < length; i++) DEV_LOGF("%02X ", pData[i]);
+  DEV_LOG("] ");
 
   if (length == 8) {
     bool found = false;
     for (size_t i = 2; i < 8; i++) {
       if (pData[i] == 0) continue;
       const char* n = lookupKey(pData[i]);
-      Serial.printf("=> Key: %s\r\n", n ? n : "?");
+      DEV_LOGF("=> Key: %s\r\n", n ? n : "?");
       found = true;
       break;
     }
-    if (!found) Serial.println("=> (no key)");
+    if (!found) DEV_LOGLN("=> (no key)");
   } else if (length >= 2) {
     uint16_t usage = pData[0] | (pData[1] << 8);
     const char* n = lookupUsage(usage);
-    Serial.printf("=> 0x%04X  %s\r\n", usage, n ? n : "(unknown)");
+    DEV_LOGF("=> 0x%04X  %s\r\n", usage, n ? n : "(unknown)");
   } else {
-    Serial.println();
+    DEV_LOGLN();
   }
 
   // ---- Translate and forward to Shield ----
@@ -663,9 +704,9 @@ void hidNotifyCallback(
 
 class ClientCallbacks : public NimBLEClientCallbacks {
   void onConnect(NimBLEClient* client) override {
-    Serial.println("[Central] Connected to TiVo remote.");
+    DEV_LOGLN("[Central] Connected to TiVo remote.");
     if (client->getConnInfo().isEncrypted()) {
-      Serial.println("[Central] Link already encrypted — skipping secureConnection.");
+      DEV_LOGLN("[Central] Link already encrypted — skipping secureConnection.");
       sTivoPendingSecure = false;
       sTivoNeedSetup     = true;
     } else {
@@ -677,7 +718,7 @@ class ClientCallbacks : public NimBLEClientCallbacks {
   void onDisconnect(NimBLEClient* client) override {
     unsigned long upMs =
         sTivoReadyAt ? (millis() - sTivoReadyAt) : 0;
-    Serial.printf("[Central] Disconnected from TiVo remote (up %lu ms).\r\n", upMs);
+    DEV_LOGF("[Central] Disconnected from TiVo remote (up %lu ms).\r\n", upMs);
     sTivoReadyAt = 0;
     releaseTivoClient(client);
 
@@ -694,13 +735,13 @@ class ClientCallbacks : public NimBLEClientCallbacks {
     }
 
     if (sHasBond && sTivoBondTrusted) {
-      Serial.println("[Central] Reconnecting in 3 s...");
+      DEV_LOGLN("[Central] Reconnecting in 3 s...");
       sReconnectAt = millis() + CFG_TIVO_RECONNECT_MS;
     } else {
 #if CFG_DEBUG_TIVO_ONLY
-      Serial.println("[Central] No trusted bond — will scan (DEBUG mode).");
+      DEV_LOGLN("[Central] No trusted bond — will scan (DEBUG mode).");
 #else
-      Serial.println("[Central] No trusted bond — will scan when Shield is ready.");
+      DEV_LOGLN("[Central] No trusted bond — will scan when Shield is ready.");
 #endif
       scheduleTivoRetry();
       tryStartTiVoCentral();
@@ -709,12 +750,12 @@ class ClientCallbacks : public NimBLEClientCallbacks {
 
   void onAuthenticationComplete(ble_gap_conn_desc* desc) override {
     if (!desc->sec_state.encrypted) {
-      Serial.println("[Central] Encryption failed. Disconnecting.");
+      DEV_LOGLN("[Central] Encryption failed. Disconnecting.");
       if (pClient) pClient->disconnect();
       scheduleTivoRetry();
       return;
     }
-    Serial.println("[Central] Encrypted / bonded.");
+    DEV_LOGLN("[Central] Encrypted / bonded.");
     // GATT must run from loop(), not from this NimBLE callback.
     sTivoPendingSecure = false;
     sTivoNeedSetup     = true;
@@ -733,7 +774,7 @@ class AdvertisedCallbacks : public NimBLEAdvertisedDeviceCallbacks {
         return;
     }
 
-    Serial.printf("[Central] Found remote: %s\r\n", dev->toString().c_str());
+    DEV_LOGF("[Central] Found remote: %s\r\n", dev->toString().c_str());
     sPendingAddr     = dev->getAddress();
     sHavePendingAddr = true;
     sTivoConnecting  = true;
@@ -751,10 +792,10 @@ bool subscribeReports(NimBLERemoteService* hid) {
     if (!c->getUUID().equals(REPORT_CHAR)) continue;
     if (c->canNotify()) {
       if (c->subscribe(true, hidNotifyCallback)) {
-        Serial.println("[Central] Subscribed to 2A4D.");
+        DEV_LOGLN("[Central] Subscribed to 2A4D.");
         any = true;
       } else {
-        Serial.println("[Central] Subscribe to 2A4D failed.");
+        DEV_LOGLN("[Central] Subscribe to 2A4D failed.");
       }
     }
   }
@@ -768,7 +809,7 @@ static bool tivoStartConnect(NimBLEAddress addr) {
   sTivoReady         = false;
   sTivoPendingSecure = false;
   sTivoNeedSetup     = false;
-  Serial.printf("[Central] Connecting to %s ...\r\n", addr.toString().c_str());
+  DEV_LOGF("[Central] Connecting to %s ...\r\n", addr.toString().c_str());
   ledHoldForBleWork();
 
   hidPauseForTivoCentral();
@@ -780,7 +821,7 @@ static bool tivoStartConnect(NimBLEAddress addr) {
   pClient->setConnectTimeout(CFG_CONNECT_TIMEOUT_S);
 
   if (!pClient->connect(addr)) {
-    Serial.println("[Central] Connection failed.");
+    DEV_LOGLN("[Central] Connection failed.");
     cleanupTivoClient();
     scheduleTivoRetry();
     return false;
@@ -794,14 +835,14 @@ static bool tivoStartConnect(NimBLEAddress addr) {
 
 static void tivoFinishSetup() {
   if (!pClient || !pClient->isConnected()) {
-    Serial.println("[Central] Client gone before HID setup.");
+    DEV_LOGLN("[Central] Client gone before HID setup.");
     cleanupTivoClient();
     scheduleTivoRetry();
     return;
   }
 
   if (!pClient->getConnInfo().isEncrypted()) {
-    Serial.println("[Central] HID setup deferred — waiting for encryption.");
+    DEV_LOGLN("[Central] HID setup deferred — waiting for encryption.");
     sTivoNeedSetup     = false;
     sTivoPendingSecure = true;
     sTivoSecureAt      = millis();
@@ -819,12 +860,12 @@ static void tivoFinishSetup() {
   sTivoReady      = true;
   sTivoReadyAt    = millis();
   sTivoRetryAt    = 0;
-  Serial.printf("[Central] TiVo linked — hold connection %u s to confirm bond...\r\n",
+  DEV_LOGF("[Central] TiVo linked — hold connection %u s to confirm bond...\r\n",
                 (unsigned)(CFG_TIVO_BOND_MIN_UP_MS / 1000));
 #if CFG_DEBUG_TIVO_ONLY
-  Serial.println("[Central] Press remote buttons — BTN lines should appear on serial.");
+  DEV_LOGLN("[Central] Press remote buttons — BTN lines should appear on serial.");
 #else
-  Serial.println("[Central] Waiting to confirm bond before marking ready.");
+  DEV_LOGLN("[Central] Waiting to confirm bond before marking ready.");
   if (!hidShieldReady()) {
     hidResumeAfterTivoCentral();
   }
@@ -840,15 +881,15 @@ static void tivoCentralTick() {
 
     sTivoPendingSecure = false;
     if (pClient->getConnInfo().isEncrypted()) {
-      Serial.println("[Central] Already encrypted — proceeding to HID setup.");
+      DEV_LOGLN("[Central] Already encrypted — proceeding to HID setup.");
       sTivoNeedSetup = true;
       return;
     }
 
-    Serial.println("[Central] Starting pairing / encryption...");
+    DEV_LOGLN("[Central] Starting pairing / encryption...");
     ledHoldForBleWork();
     if (!pClient->secureConnection()) {
-      Serial.println("[Central] Pairing/encryption failed.");
+      DEV_LOGLN("[Central] Pairing/encryption failed.");
       if (pClient) pClient->disconnect();
       scheduleTivoRetry();
     }
@@ -857,7 +898,7 @@ static void tivoCentralTick() {
 
   if (sTivoNeedSetup) {
     sTivoNeedSetup = false;
-    Serial.println("[Central] Discovering HID service / subscribing...");
+    DEV_LOGLN("[Central] Discovering HID service / subscribing...");
     tivoFinishSetup();
   }
 }
@@ -868,9 +909,9 @@ static void tivoBondConfirmTick() {
 
   saveTiVoBond(pClient);
 #if CFG_DEBUG_TIVO_ONLY
-  Serial.println("[Central] TiVo ready (DEBUG — bond confirmed).");
+  DEV_LOGLN("[Central] TiVo ready (DEBUG — bond confirmed).");
 #else
-  Serial.println("[Central] Ready — forwarding to Shield.");
+  DEV_LOGLN("[Central] Ready — forwarding to Shield.");
 #endif
 }
 
@@ -886,9 +927,9 @@ static void forgetTiVo() {
   sTivoSuppressReconnect = true;
   if (pClient) cleanupTivoClient();
   else sTivoSuppressReconnect = false;
-  Serial.println("[BTN] TiVo bond cleared — will scan.");
+  DEV_LOGLN("[BTN] TiVo bond cleared — will scan.");
 #if CFG_DEBUG_TIVO_ONLY
-  Serial.println("[BTN] DEBUG mode — Shield not required for scan.");
+  DEV_LOGLN("[BTN] DEBUG mode — Shield not required for scan.");
 #endif
   tryStartTiVoCentral();
 }
@@ -899,14 +940,14 @@ static void queueForgetTiVo() {
 
 static void forgetShield() {
   hidForgetShield(sBondedAddr, sHasBond);
-  Serial.println("[BTN] Shield bond cleared — re-advertising.");
+  DEV_LOGLN("[BTN] Shield bond cleared — re-advertising.");
 }
 
 static void factoryReset() {
   queueForgetTiVo();
   forgetShield();
   keymapClearCustom();
-  Serial.println("[BTN] Factory reset complete — all bonds and keymap cleared.");
+  DEV_LOGLN("[BTN] Factory reset complete — all bonds and keymap cleared.");
 }
 
 // ============================================================
@@ -931,24 +972,24 @@ static void buttonTick() {
       sBtnLevel = 4;
       factoryReset();
       startFactoryLedSequence();
-      Serial.println("[BTN] 10 s: factory reset.");
+      DEV_LOGLN("[BTN] 10 s: factory reset.");
 
     } else if (held >= CFG_BTN_SHIELD_MS && sBtnLevel < 3) {
       sBtnLevel = 3;
       forgetShield();
       ledForceButton(LedPattern::DoubleFlashShield);
-      Serial.println("[BTN] 8 s: Shield bond forgotten.");
+      DEV_LOGLN("[BTN] 8 s: Shield bond forgotten.");
 
     } else if (held >= CFG_BTN_TIVO_MS && sBtnLevel < 2) {
       sBtnLevel = 2;
       queueForgetTiVo();
       ledConfirmOnce(kColShield);
-      Serial.println("[BTN] 5 s: TiVo bond forgotten.");
+      DEV_LOGLN("[BTN] 5 s: TiVo bond forgotten.");
 
     } else if (held >= CFG_BTN_WARN_MS && sBtnLevel < 1) {
       sBtnLevel = 1;
       ledForceButton(LedPattern::DoubleFlash);
-      Serial.println("[BTN] 4 s: warning — keep holding for TiVo clear.");
+      DEV_LOGLN("[BTN] 4 s: warning — keep holding for TiVo clear.");
     }
 
   } else if (sBtnHeld) {
@@ -965,35 +1006,63 @@ static void buttonTick() {
 // Arduino setup / loop
 // ============================================================
 
+// USB option 1 (app-only) keeps the NVS partition. Old BLE controller config there
+// can make esp_bt_controller_init fail with "Config struct mismatch" / ESP_ERR_NO_MEM.
+// Erase NVS when firmware version changes or NVS is corrupt.
+static void peanutEnsureNvsCompatible() {
+  esp_err_t err = nvs_flash_init();
+  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    DEV_LOGLN("[BOOT] NVS corrupt — erasing");
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ESP_ERROR_CHECK(nvs_flash_init());
+    err = ESP_OK;
+  }
+  if (err != ESP_OK) {
+    DEV_LOGLN("[BOOT] NVS init failed — erasing");
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ESP_ERROR_CHECK(nvs_flash_init());
+  }
+
+  nvs_handle_t h;
+  char stored[16] = {};
+  bool needErase = false;
+  if (nvs_open(CFG_NVS_SYS_NS, NVS_READWRITE, &h) != ESP_OK) {
+    needErase = true;
+  } else {
+    size_t len = sizeof(stored);
+    if (nvs_get_str(h, CFG_NVS_SYS_FWVER, stored, &len) != ESP_OK ||
+        strcmp(stored, CFG_FIRMWARE_VERSION) != 0) {
+      needErase = true;
+    }
+    nvs_close(h);
+  }
+
+  if (needErase) {
+    DEV_LOGF("[BOOT] NVS sync for %s — erasing (re-pair Shield + TiVo once)\r\n",
+                  CFG_FIRMWARE_VERSION);
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ESP_ERROR_CHECK(nvs_flash_init());
+    if (nvs_open(CFG_NVS_SYS_NS, NVS_READWRITE, &h) == ESP_OK) {
+      nvs_set_str(h, CFG_NVS_SYS_FWVER, CFG_FIRMWARE_VERSION);
+      nvs_set_u32(h, CFG_NVS_SYS_BLELAY, CFG_NVS_BLE_LAYOUT);
+      nvs_commit(h);
+      nvs_close(h);
+    }
+  }
+}
+
 void setup() {
   sBootMs = millis();
-  Serial.begin(115200);
 
-  // WS2812 RGB LED — yellow while BLE stack initialises (init before delay so
-  // the LED is not dark for the first second while USB serial comes up)
   sLed.begin();
   sLed.setBrightness(CFG_LED_BRIGHTNESS);
-  sLed.setPixelColor(0, kColBoot);
-  sLed.show();
-  sLedAt = millis();
+  ledForce(LedPattern::BootBlink);
+  ledPumpStart();
 
-  delay(1000);
-
-  Serial.printf("\n=== TiVo BLE HID Translator %s ===\r\n", CFG_FIRMWARE_VERSION);
-#if CFG_DEBUG_TIVO_ONLY
-  Serial.println("*** DEBUG: CFG_DEBUG_TIVO_ONLY=1 — Shield pairing skipped, TiVo scan at boot ***");
-#endif
-
-  // Boot button
   pinMode(CFG_BOOT_BTN_PIN, INPUT_PULLUP);
 
-  Serial.printf("[BOOT] flash=%u KB  PSRAM=%u KB  heap=%u\r\n",
-                (unsigned)(ESP.getFlashChipSize() / 1024),
-                (unsigned)(ESP.getPsramSize() / 1024),
-                (unsigned)ESP.getFreeHeap());
   if (ESP.getPsramSize() < 512 * 1024) {
-    Serial.println("[BOOT] ERROR: No PSRAM detected — need Waveshare ESP32-S3-Zero (FH4R2, 2 MB PSRAM).");
-    Serial.println("[BOOT] Wrong clone chip or bad flash config. BLE cannot start.");
+    ledPumpStop();
     while (true) {
       ledWrite(kColReset);
       delay(400);
@@ -1002,14 +1071,27 @@ void setup() {
     }
   }
 
+  peanutEnsureNvsCompatible();
+
   NimBLEDevice::init(CFG_BLE_DEVICE_NAME);
-  NimBLEDevice::setSecurityAuth(true, false, true);  // bond=true, MITM=false, SC=true
+  NimBLEDevice::setSecurityAuth(true, false, true);
   NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
   NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
   NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
 
   hidPeripheralInit();
   keymapInit();
+
+  ledSetBase(LedPattern::SlowBlink);
+  ledTick();
+  ledPumpStop();
+
+  Serial.begin(115200);
+  Serial.setTxTimeoutMs(0);
+  gDevLogReady = true;
+
+  DEV_LOGF("\n=== TiVo BLE HID Translator %s ready ===\r\n", CFG_FIRMWARE_VERSION);
+
 #if CFG_SHIELD_DEBUG
   hidShieldDebugLogBootReason();
 #endif
@@ -1030,22 +1112,21 @@ void setup() {
     sBondedAddr = NimBLEAddress(addrStr.c_str());
     sHasBond    = true;
     if (sTivoBondTrusted) {
-      Serial.printf("[Central] Trusted TiVo bond: %s\r\n", addrStr.c_str());
+      DEV_LOGF("[Central] Trusted TiVo bond: %s\r\n", addrStr.c_str());
     } else {
-      Serial.printf("[Central] Unconfirmed TiVo address in NVS: %s\r\n", addrStr.c_str());
-      Serial.println("[Central] Reset remote if needed; any button for pairing mode.");
+      DEV_LOGF("[Central] Unconfirmed TiVo address in NVS: %s\r\n", addrStr.c_str());
+      DEV_LOGLN("[Central] Reset remote if needed; any button for pairing mode.");
     }
   } else {
 #if CFG_DEBUG_TIVO_ONLY
-    Serial.println("[Central] No TiVo bond. DEBUG mode — TiVo scan starts at boot.");
+    DEV_LOGLN("[Central] No TiVo bond. DEBUG mode — TiVo scan starts at boot.");
 #else
-    Serial.println("[Central] No TiVo bond. Pair Shield first; then pair TiVo remote.");
+    DEV_LOGLN("[Central] No TiVo bond. Pair Shield first; then pair TiVo remote.");
 #endif
   }
 
   // Load Shield bond so the peripheral knows which bond to preserve
   hidLoadShieldBond(sBondedAddr, sHasBond);
-  Serial.flush();
 }
 
 void loop() {
@@ -1063,8 +1144,8 @@ void loop() {
     if (scan && scan->isScanning() && shieldDoneForTivo() && !sTivoReady &&
         !tivoCentralBusy() && (millis() - sScanLogAt >= 15000)) {
       sScanLogAt = millis();
-      Serial.println("[Central] Still scanning — put remote in pairing mode.");
-      Serial.println("[Central]   Power+TiVo → Vol− x3 → TiVo → any button.");
+      DEV_LOGLN("[Central] Still scanning — put remote in pairing mode.");
+      DEV_LOGLN("[Central]   Power+TiVo → Vol− x3 → TiVo → any button.");
     }
   }
 
@@ -1078,11 +1159,11 @@ void loop() {
     bool isReady = hidShieldReady();
     if (isReady && !sWasShieldReady) {
       sShieldParamsAt = millis() + CFG_SHIELD_FAST_PARAMS_DELAY_MS;
-      Serial.println("[HID] Shield CCCD confirmed — fast params in 1 s.");
+      DEV_LOGLN("[HID] Shield CCCD confirmed — fast params in 1 s.");
     }
 #if CFG_SHIELD_DEBUG
     if (!isReady && sWasShieldReady) {
-      Serial.printf("[HID-DBG] Shield left ready (state=%s)\r\n", hidGetShieldState());
+      DEV_LOGF("[HID-DBG] Shield left ready (state=%s)\r\n", hidGetShieldState());
     }
 #endif
     sWasShieldReady = isReady;
@@ -1128,7 +1209,7 @@ void loop() {
 
     if (hasAddr) {
       if (!tivoStartConnect(addr)) {
-        Serial.println("[Central] Connect failed — retrying shortly.");
+        DEV_LOGLN("[Central] Connect failed — retrying shortly.");
         tryStartTiVoCentral();
       }
     }

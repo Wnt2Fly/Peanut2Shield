@@ -388,13 +388,17 @@ On PC USB power, expect brief **yellow**, then **purple slow blink** if nothing 
 
 ### Serial shows `ESP_ERR_NO_MEM` or `Config struct mismatch`
 
-Usually **stale NVS** after a partial flash, or PSRAM not enabled. Fix:
+Usually **stale NVS** after a **USB option 1** (app-only) update, or PSRAM not enabled. The app partition updates but old Bluetooth settings stay behind and v1.02 could crash-loop.
+
+Fix:
 
 1. Close the serial monitor (Ctrl+C).
-2. Full erase + flash (`flash-recover.bat` or `pio run -t erase` then `upload`).
-3. Press **RESET** once; open monitor and confirm `[BOOT] PSRAM=2048 KB`.
+2. **UPDATE.bat → option 2** (full erase + flash), or `flash-recover.bat COM<N>` from a dev PC.
+3. Press **RESET** once; expect **purple slow blink** within a few seconds.
 
-Normal update alone does **not** clear NVS — use **UPDATE.bat option 2** on a board that is crash-looping.
+**v1.03+** clears incompatible NVS on first boot after a bad update (re-pair once).
+
+Normal update (option 1) does **not** clear NVS — do **not** use option 1 on a yellow/crash-looping board.
 
 ### Upload / flash errors
 

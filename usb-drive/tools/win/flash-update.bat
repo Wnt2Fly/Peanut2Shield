@@ -5,6 +5,7 @@ cd /d "%KIT%"
 
 call "%~dp0flasher.bat"
 if errorlevel 1 goto :noflasher
+if not defined FLASHER_CMD goto :noflasher
 
 echo.
 echo Peanut2Shield - firmware UPDATE (pairing usually kept)
@@ -19,7 +20,7 @@ if not exist "firmware\update\firmware.bin" (
 )
 
 echo Available COM ports (if listed below):
-if /i "%FLASHER_KIND%"=="espflash" "%FLASHER_CMD%" --skip-update-check list-all-ports 2>nul
+if /i "%FLASHER_KIND%"=="espflash" "%FLASHER_CMD%" --skip-update-check list-ports 2>nul
 echo.
 echo In Device Manager: Ports ^(COM ^& LPT^) - look for USB Serial ^(COMxx^)
 echo.
@@ -30,15 +31,16 @@ if "%COMPORT%"=="" (
   pause
   exit /b 1
 )
+if /i not "%COMPORT:~0,3%"=="COM" set "COMPORT=COM%COMPORT%"
 
 echo.
 echo Flashing firmware to %COMPORT% ...
 echo.
 
 if /i "%FLASHER_KIND%"=="espflash" (
-  "%FLASHER_CMD%" --skip-update-check write-bin -c esp32s3 -p %COMPORT% -B 460800 0x10000 firmware\update\firmware.bin
+  "%FLASHER_CMD%" --skip-update-check write-bin -c esp32s3 -p %COMPORT% -B 115200 -b usb-reset --non-interactive 0x10000 firmware\update\firmware.bin
 ) else (
-  call %FLASHER_CMD% --chip esp32s3 --port %COMPORT% --baud 460800 write_flash 0x10000 firmware\update\firmware.bin
+  call %FLASHER_CMD% --chip esp32s3 --port %COMPORT% --baud 115200 write_flash 0x10000 firmware\update\firmware.bin
 )
 
 if errorlevel 1 goto :failed

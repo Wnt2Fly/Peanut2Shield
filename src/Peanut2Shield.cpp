@@ -727,7 +727,9 @@ class ClientCallbacks : public NimBLEClientCallbacks {
       return;
     }
 
-    if (upMs > 0 && upMs < CFG_TIVO_BOND_MIN_UP_MS) {
+    // Only discard an unconfirmed (first-time) bond. A trusted bond must survive
+    // short drops after reconnect — otherwise RF blips wipe pairing mid-use.
+    if (upMs > 0 && upMs < CFG_TIVO_BOND_MIN_UP_MS && !sTivoBondTrusted) {
       invalidateTiVoBond("link dropped before bond was confirmed");
       scheduleTivoRetry();
       tryStartTiVoCentral();

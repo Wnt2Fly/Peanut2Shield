@@ -13,7 +13,7 @@
 #define CFG_BLE_DEVICE_NAME  "Peanut2Shield"
 
 // Firmware version (serial banner, README, USB kit VERSION.txt)
-#define CFG_FIRMWARE_VERSION  "v1.06"
+#define CFG_FIRMWARE_VERSION  "v1.07"
 
 // BLE appearance value advertised to Android TV.
 // 0x0180 = Generic Remote Control - avoids the PIN-entry flow triggered by
@@ -76,7 +76,8 @@
 // Pause after BLE connect before calling secureConnection (lets link stabilize).
 #define CFG_TIVO_SECURE_DELAY_MS  400
 
-// Connection must stay up this long before the TiVo bond is saved / trusted.
+// Connection must stay up this long before a *new* TiVo bond is saved / trusted.
+// Already-trusted bonds are never cleared by a short drop (reconnect instead).
 #define CFG_TIVO_BOND_MIN_UP_MS  5000
 
 // Wait after Shield is ready before starting TiVo scan/connect (lets CCCD + conn params settle).

@@ -39,4 +39,7 @@ python3 -m esptool --chip esp32s3 --port "${PORT}" --baud 460800 \
 
 echo
 echo "SUCCESS. Press the RESET button on the board once, then unplug from PC."
+echo "Power from a WALL USB adapter — not the Nvidia Shield USB port."
+echo "(Charge-only cable OK for Shield power only; data cable can hang the board.)"
+echo "LED should BLINK purple, or green if already paired. Solid purple = hung."
 echo

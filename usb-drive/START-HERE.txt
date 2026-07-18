@@ -8,36 +8,47 @@ WINDOWS — do this
 1. Unplug Peanut2Shield from the TV.
 2. Plug it into this PC with a USB-C DATA cable (not charge-only).
 3. Double-click:  UPDATE.bat
-4. Pick option 1 (normal) or 2 (board stuck on yellow).
+4. Pick option 1 (normal) or 2 (board stuck on yellow / solid purple).
 5. When asked for COM port:
    - Open Device Manager (Win+X → Device Manager)
    - Expand "Ports (COM & LPT)"
    - Type the port shown, e.g. COM19
 6. Wait for SUCCESS.
 7. Press the small RESET button on the board once.
-8. Unplug from PC and plug back into TV power (wall adapter is best).
+8. Unplug from PC and power from a WALL USB adapter (best).
+
+POWER (IMPORTANT)
+-----------------
+  Daily use: WALL USB adapter (or always-on hub / TV USB that stays on).
+
+  Do NOT use the Nvidia Shield USB port with a normal data cable.
+  The Shield can hang the board → SOLID PURPLE LED (not blinking).
+
+  If you must power from the Shield: use a CHARGE-ONLY (power-only) cable
+  (no data wires). Flashing still needs a DATA cable to a PC.
 
 WHICH OPTION?
 -------------
   1  Normal update
-     ONLY if the remote was working and the LED was NOT stuck on yellow.
+     ONLY if the remote was working and the LED was NOT stuck on yellow/purple.
      Keeps Shield and TiVo pairing when it works.
 
   2  Full fix  <-- use this if anything went wrong
-     LED stays YELLOW forever, remote stopped working, or first-time setup.
+     LED stays YELLOW forever, SOLID PURPLE, remote stopped working, or new board.
      Clears the chip and re-flashes everything. Re-pair Shield + TiVo.
 
-  Check VERSION.txt on the stick — must say v1.06 for the yellow-LED boot fix.
-  If option 1 was used and the LED is now solid yellow, run option 2 with a v1.06 stick.
+  Check VERSION.txt on the stick — prefer v1.07 or newer.
+  If option 1 was used and the LED is now stuck, run option 2 with a fresh stick.
 
-  Maintainer: run pack-usb-drive.bat on the build PC before copying usb-drive to a stick.
-  The stick must contain firmware\update\firmware.bin (not just the scripts).
+  Maintainer: run pack-usb-drive.bat on the build PC before copying usb-drive
+  to a stick. The stick must contain firmware\update\firmware.bin.
 
 AFTER FLASH
 -----------
   Purple slow blink   → pair Shield: Settings → Add accessory → Peanut2Shield
   Orange double-flash → pair TiVo: Power+TiVo, Vol− x3, TiVo, any button
   Solid green         → working
+  Solid purple        → hung (wrong power — use wall adapter / charge-only)
 
 DO NOT hold the tiny BOOT button unless you mean to clear pairing:
   5 sec = forget TiVo    8 sec = forget Shield    10 sec = factory reset
@@ -46,7 +57,7 @@ NO COM PORT AFTER REBOOT?
 -------------------------
 Windows lost the port — common after a bad flash or yellow crash loop.
 
-  1. Unplug 10 sec, try another USB port on the PC (data cable!).
+  1. Unplug 10 sec, try another USB port on the PC (DATA cable!).
   2. Device Manager — port may have a NEW number (COM19 not COM15).
   3. Still nothing? Hold BOOT, plug in USB, release BOOT after 2 sec.
      Then run UPDATE.bat option 2 right away.

@@ -46,8 +46,11 @@ if /i "%FLASHER_KIND%"=="espflash" (
 if errorlevel 1 goto :failed
 
 echo.
-echo SUCCESS. Press the RESET button on the board once, then unplug from PC.
-echo LED should blink purple (pair Shield) or go green if already paired.
+echo SUCCESS. Press RESET once, then unplug from the PC.
+echo Power from a WALL USB adapter — not the Nvidia Shield USB port.
+echo (If you must use Shield power, use a CHARGE-ONLY cable.)
+echo LED should BLINK purple (pair Shield) or go green if already paired.
+echo Solid purple = hung on USB serial — change power source.
 echo.
 pause
 exit /b 0

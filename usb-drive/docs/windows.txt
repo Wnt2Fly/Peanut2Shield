@@ -11,9 +11,9 @@ NO PYTHON REQUIRED
 Double-click UPDATE.bat (or read START-HERE.txt).
 
   1 — Normal update (only if remote was already working)
-  2 — Full fix (yellow LED stuck, remote dead, or new board)
+  2 — Full fix (yellow LED stuck, solid purple stuck, remote dead, or new board)
 
-If the LED is yellow or the update failed, use option 2 — not option 1.
+If the LED is yellow/solid purple or the update failed, use option 2 — not option 1.
 Option 1 does not erase old Bluetooth settings and can cause a yellow crash loop
 on older firmware. Option 2 always clears the chip first.
 
@@ -21,7 +21,7 @@ on older firmware. Option 2 always clears the chip first.
 FIND THE COM PORT
 -----------------------------------------------------------------------------
 
-1. Plug the board into the PC with USB-C (data cable).
+1. Plug the board into the PC with a USB-C DATA cable (not charge-only).
 2. Open Device Manager (Win+X → Device Manager).
 3. Expand "Ports (COM & LPT)".
 4. Note the port named something like "USB Serial Device (COM19)".
@@ -34,7 +34,8 @@ OPTION A — NORMAL UPDATE
 
 1. UPDATE.bat → press 1
 2. Enter COM port (e.g. COM19)
-3. Press RESET when done; plug back into TV power
+3. Press RESET when done
+4. Unplug from PC — power from a WALL USB adapter (see POWER below)
 
 -----------------------------------------------------------------------------
 OPTION B — FULL FIX
@@ -45,8 +46,27 @@ Erases the chip first — re-pair Shield and TiVo afterward.
 1. UPDATE.bat → press 2
 2. Enter COM port
 3. Press RESET when done
+4. Unplug from PC — wall USB adapter (see POWER below)
 
 Advanced: tools\win\flash-update.bat or flash-full.bat
+
+-----------------------------------------------------------------------------
+POWER (AFTER FLASH / DAILY USE)
+-----------------------------------------------------------------------------
+
+Use a dedicated WALL USB adapter (or always-on powered hub / TV USB that
+stays live in standby).
+
+Do NOT power from the Nvidia Shield USB port with a normal data cable.
+The Shield is a USB host: it can enumerate the board's USB serial device
+without opening it. Firmware then stalls and the LED freezes — usually
+SOLID PURPLE (not blinking). Pairing may still be stored; the board is hung.
+
+If you must use Shield USB for power only:
+  → Use a CHARGE-ONLY (power-only) cable — no data wires (D+/D−).
+  → You cannot flash firmware over a charge-only cable (use a data cable to a PC).
+
+Wall adapter is still preferred (Shield USB can also cut power in sleep).
 
 -----------------------------------------------------------------------------
 TROUBLESHOOTING
@@ -55,6 +75,7 @@ TROUBLESHOOTING
 "No COM port" / Windows does not show COMxx after reboot
   The USB port often comes back — try in order:
   1. Unplug USB, wait 10 seconds, plug into a different PC port (not a hub).
+     Use a DATA cable (charge-only will not show a COM port).
   2. Open Device Manager → View → Show hidden devices.
      Look under "Ports (COM & LPT)" AND "Universal Serial Bus devices".
      The board may appear with a new number (was COM15, now COM19).
@@ -65,7 +86,12 @@ TROUBLESHOOTING
      - Release BOOT after 2 seconds
      - A COM port should appear — run UPDATE.bat option 2 immediately
   4. If a COM port appears briefly then vanishes: yellow crash loop.
-     Use option 2 with a v1.06 stick (see VERSION.txt).
+     Use option 2 with a current stick (see VERSION.txt; v1.07+ preferred).
+
+"Solid purple LED" (not blinking) behind the TV
+  → Almost always wrong power source: Shield USB or PC USB with no serial app.
+  → Move to a WALL USB adapter. Optional: charge-only cable into Shield only.
+  → Healthy wait-for-Shield is PURPLE SLOW BLINK, not solid.
 
 "Flash says SUCCESS but LED still yellow"
   → VERSION.txt on the stick is probably old. PlatformIO upload uses the latest
@@ -76,7 +102,7 @@ TROUBLESHOOTING
   → Run pack\pack.bat on the build PC (bundles tools\win\espflash.exe).
 
 "Failed to connect"
-  → Unplug/replug USB, press RESET, try another cable/port.
+  → Unplug/replug USB, press RESET, try another cable/port (DATA cable).
   → Use option 2 if the LED was stuck on yellow.
 
 -----------------------------------------------------------------------------
@@ -86,7 +112,9 @@ BUILD THIS KIT (MAINTAINER)
 From the project folder:
 
   usb-drive\pack\pack.bat
+  (or pack-usb-drive.bat from the project root)
 
 Copy the entire usb-drive folder to a USB stick.
+Confirm VERSION.txt and firmware\update\firmware.bin are present.
 
 Linux: docs\linux.txt

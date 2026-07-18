@@ -24,6 +24,8 @@ Serial port access:
     sudo usermod -aG dialout "$USER"
     # log out and back in (or reboot)
 
+Use a USB DATA cable to the PC for flashing (not charge-only).
+
 -----------------------------------------------------------------------------
 UPDATE
 -----------------------------------------------------------------------------
@@ -38,6 +40,23 @@ Or run directly:
   ./tools/linux/flash-update.sh
   ./tools/linux/flash-full.sh
 
+After SUCCESS: press RESET, unplug from the PC, then power from a WALL USB
+adapter for normal use (see POWER below).
+
+-----------------------------------------------------------------------------
+POWER (AFTER FLASH / DAILY USE)
+-----------------------------------------------------------------------------
+
+Use a dedicated WALL USB adapter (or always-on powered hub / TV USB that
+stays live in standby).
+
+Do NOT power from the Nvidia Shield USB port with a normal data cable.
+The Shield is a USB host and can hang the board's USB serial path — LED often
+freezes SOLID PURPLE. Healthy advertising is purple SLOW BLINK.
+
+If you must use Shield USB for power only: use a CHARGE-ONLY (power-only)
+cable (no D+/D−). You cannot flash over charge-only — use a data cable to a PC.
+
 -----------------------------------------------------------------------------
 TROUBLESHOOTING
 -----------------------------------------------------------------------------
@@ -46,7 +65,10 @@ TROUBLESHOOTING
   → Add your user to the dialout group (see above).
 
 "Failed to connect"
-  → Unplug/replug USB, press RESET, retry.
+  → Unplug/replug USB, press RESET, retry (DATA cable).
+
+"Solid purple LED" behind the TV
+  → Use wall USB power, not Shield USB (or charge-only into Shield).
 
 -----------------------------------------------------------------------------
 BUILD THIS KIT (MAINTAINER)

@@ -32,7 +32,8 @@ echo  1  Normal update     (remote was working — keeps pairing)
 echo  2  Full fix           (YELLOW LED stuck / new board / update failed)
 echo.
 echo  If the LED is yellow or the remote stopped working, use 2 not 1.
-echo  After any flash: press RESET once, then unplug from PC for wall power.
+echo  After any flash: press RESET, then WALL USB power (not Shield USB).
+echo  Solid purple = hung on USB serial — use wall adapter or charge-only cable.
 echo  Q  Quit
 echo.
 

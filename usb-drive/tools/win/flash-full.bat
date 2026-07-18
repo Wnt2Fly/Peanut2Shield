@@ -81,7 +81,9 @@ if errorlevel 1 goto :failed
 
 echo.
 echo SUCCESS. Press RESET, then pair Shield and TiVo if needed.
-echo LED should blink PURPLE within a few seconds — not solid yellow.
+echo Power from a WALL USB adapter — not the Nvidia Shield USB port.
+echo (Charge-only cable OK for Shield power only; data cable hangs the board.)
+echo LED should BLINK PURPLE — not solid yellow or solid purple.
 echo.
 pause
 exit /b 0

@@ -37,7 +37,7 @@ When a button is pressed on the TiVo remote, the firmware translates it (if need
 | MCU | [Waveshare ESP32-S3-Zero](https://www.waveshare.com/esp32-s3-zero.htm) (chip **ESP32-S3FH4R2** — 4 MB flash, **2 MB PSRAM required**) |
 | LED | WS2812 RGB on GPIO 21 — colour-coded by connection state (see LED patterns below) |
 | Boot button | GPIO 0 — hold to manage bonds (see below) |
-| Power | USB-C — must stay powered continuously (see [Power](#power) below) |
+| Power | USB-C — wall USB adapter preferred (see [Power](#power); avoid Shield USB data cable) |
 
 ---
 
@@ -45,16 +45,30 @@ When a button is pressed on the TiVo remote, the firmware translates it (if need
 
 The bridge must remain powered for BLE to work — it has no battery.
 
-- Plug into a **USB port that is always on** (wall adapter, powered hub, or TV USB port that stays live in standby).
-- If you power it from the **Shield's USB port**, check that those ports are **not disabled when the Shield sleeps or powers down**. Some Shield models turn off rear USB ports in deep sleep; if power drops, the bridge reboots and you lose the active BLE session until it reconnects.
-- A dedicated wall-powered USB adapter behind the TV is the most reliable option.
+**Recommended:** a dedicated **wall USB adapter** (or always-on powered hub / TV USB that stays live in standby) behind the TV. Power-only sources are the most reliable.
 
-**TiVo remote feels sluggish or “buffered”** (press OK, long pause, then action): the ESP32 is often under-powered or starved on the data line, not a pairing bug. Try a **better USB cable** before changing firmware:
+### Do not power from the Shield USB port (recommended)
 
-- **Data-capable** USB cable (many charge-only cables look fine but fail under load).
-- **Short** run (6 in / 15 cm is ideal behind the TV).
-- If you use **Shield USB-A → USB-C**, use a quality **USB-A to USB-C** adapter/cable rated for **3 A** where possible; thin phone-charge cables are a common cause.
-- Compare with a **wall USB adapter** on the same board — if that feels snappy, swap the cable from the Shield.
+Earlier docs suggested the Shield’s USB port as an option. **Avoid that for day-to-day use.**
+
+The Waveshare ESP32-S3-Zero exposes **USB Serial/JTAG** on its USB-C jack. The Nvidia Shield is a USB **host**: it often **enumerates** that serial device but never opens it. Firmware debug writes can then **stall**, the LED freezes (commonly **solid purple**), and BLE stops making progress — even though pairing was fine for days on wall power.
+
+The Shield also has no practical setting to “ignore COM / USB serial gadgets” for this device.
+
+| Power source | Notes |
+|--------------|--------|
+| **Wall USB adapter** | Best — power only; no host grabbing USB serial |
+| Powered hub / always-on TV USB | Good if it stays powered in standby |
+| **Shield USB** | Not recommended — sleep/cut power *and* USB-serial hang risk |
+| PC USB (no serial monitor) | Same hang risk as Shield USB; opening a COM monitor can unblock it |
+
+**If you must use Shield USB anyway:** use a **charge-only** (power-only) USB cable or adapter that does **not** connect the data lines (D+/D−). That stops the Shield from talking USB serial to the board while still supplying 5 V. A normal data cable to the Shield is what triggers the hang.
+
+**TiVo remote feels sluggish or “buffered”** (press OK, long pause, then action): the ESP32 is often under-powered or on a weak cable, not a pairing bug:
+
+- Prefer a short, decent **wall-adapter** cable.
+- Thin phone-charge cables and long runs are a common cause of lag.
+- If you previously used Shield USB-A → USB-C for power, move to a wall adapter first before chasing firmware.
 
 ---
 
@@ -64,8 +78,9 @@ The bridge must remain powered for BLE to work — it has no battery.
 
 | Colour | Pattern | Meaning |
 |--------|---------|---------|
-| Yellow | Steady | Boot — BLE stack initialising (~1–2 s after reset). Normal on **any** power source (PC USB, wall adapter, Shield USB). |
-| Purple | Slow blink (500 ms on/off) | **Pair the Shield** — advertising, or Shield connected and finishing setup |
+| Yellow | Steady | Boot — BLE stack initialising (~1–2 s after reset). |
+| Purple | Slow blink (500 ms on/off) | **Pair / wait for Shield** — advertising, or Shield connected and finishing setup |
+| Purple | **Solid** (not blinking) | **Stuck** — often USB host hang (Shield USB or PC USB with no monitor). Use wall power; see [Troubleshooting](#troubleshooting). |
 | Deep orange | Double-flash … pause … repeat | **Pair the TiVo remote** — Shield ready, scanning for TiVo; also BOOT 4 s warning |
 | Green | 3 quick flashes (once), then **steady on** | Both devices ready — stays green while paired |
 | White | Single 80 ms flash | Button press forwarded to Shield |
@@ -76,7 +91,8 @@ The bridge must remain powered for BLE to work — it has no battery.
 | Red | Slow blink (400 ms on/off) | **Wrong hardware** — no PSRAM detected; needs genuine Waveshare FH4R2 board |
 | Green | 3 quick flashes (once) | Factory reset confirm → then slow blink |
 
-> **Stuck on yellow?** Steady yellow for more than ~5 s usually means a **crash reboot loop** (BLE failed to start), not pairing mode. See [Troubleshooting](#troubleshooting).
+> **Stuck on yellow?** Steady yellow for more than ~5 s usually means a **crash reboot loop** (BLE failed to start), not pairing mode.  
+> **Stuck on solid purple?** Firmware hung after start (often Shield/PC USB serial) — use a **wall adapter**, not Shield USB. See [Troubleshooting](#troubleshooting).
 
 > **Note:** Earlier firmware used the wrong WS2812 channel order (`NEO_GRB`), which made the purple slow-blink state look **cyan** on the Waveshare ESP32-S3-Zero. Reflash if colours still look swapped (e.g. cyan when you expect purple).
 
@@ -234,9 +250,13 @@ The bridge is already scanning. Put the **TiVo Stream 4K** remote in BLE pairing
 
 If both devices were paired before, you do **not** need to open Shield settings or put the TiVo remote in pairing mode again.
 
-1. Power on or press **RESET** — brief **yellow**, then **slow blink** while the Shield reconnects (up to ~8 s if the Shield was asleep).
+Power from a **wall USB adapter** (not Shield USB with a data cable). See [Power](#power).
+
+1. Power on or press **RESET** — brief **yellow**, then **purple slow blink** while the Shield reconnects (up to ~8 s if the Shield was asleep).
 2. TiVo reconnects automatically once the Shield window finishes (or sooner if Shield is already linked).
 3. **Steady green** = both ready; white flash on button press = keys reaching the Shield.
+
+If the LED is **solid purple** (not blinking), the board is hung on USB serial — move to wall power or a charge-only cable.
 
 If you see **white flashes** but the Shield does not respond, the TiVo link is up but the Shield is not — wait a few seconds, wake the Shield, or hold **BOOT 8 s** to re-pair the Shield side only.
 
@@ -371,18 +391,19 @@ Good boot on serial:
 [HID] Peripheral ready — advertising as 'Peanut2Shield'.
 ```
 
-On PC USB power, expect brief **yellow**, then **purple slow blink** if nothing is paired yet — that is normal. COM is for power and serial only; it does not change LED behaviour.
+On PC USB power, expect brief **yellow**, then **purple slow blink** if nothing is paired yet. Opening the serial monitor can change behaviour: with no reader, USB serial writes may **block** and freeze the LED (solid purple/yellow). Prefer wall power for normal TV use.
 
 ---
 
 ## Troubleshooting
 
-### LED stuck on yellow
+### LED stuck on yellow or solid purple
 
 | Symptom | Likely cause | Fix |
 |---------|----------------|-----|
-| Yellow **~1–2 s**, then purple blink | Normal boot | Pair Shield if new; ignore if already green behind TV |
+| Yellow **~1–2 s**, then purple **blink** | Normal boot | Pair Shield if new; ignore if already green behind TV |
 | Yellow **forever** or keeps restarting | BLE crash loop (`ESP_ERR_NO_MEM` on serial) | **`UPDATE.bat` → option 2** or **`flash-recover.bat COM<N>`** |
+| **Solid purple** (not blinking) after power cycle | USB host enumerated serial but nothing reads it (Shield USB / PC without monitor) | Power from a **wall USB adapter**; avoid Shield USB. Optional: charge-only cable if you must use Shield power |
 | **Fast** yellow blink | BOOT button held or stuck | Release BOOT; check case isn’t pressing the button |
 | **Red** slow blink | No PSRAM on chip | Wrong board — need **Waveshare ESP32-S3-Zero (FH4R2)** with 2 MB PSRAM |
 

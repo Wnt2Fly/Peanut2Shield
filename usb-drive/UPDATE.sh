@@ -8,8 +8,11 @@ echo "=============================="
 cat VERSION.txt 2>/dev/null || true
 echo
 echo "  1  Normal update (keeps pairing)"
-echo "  2  Full fix (yellow LED / new board)"
+echo "  2  Full fix (yellow / solid purple / new board)"
 echo "  Q  Quit"
+echo
+echo "After flash: RESET, then WALL USB power (not Shield USB data cable)."
+echo "Solid purple = hung — use wall adapter or charge-only cable to Shield."
 echo
 read -r -p "Pick 1, 2, or Q: " choice
 case "${choice^^}" in

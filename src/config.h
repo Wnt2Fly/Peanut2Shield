@@ -13,7 +13,7 @@
 #define CFG_BLE_DEVICE_NAME  "Peanut2Shield"
 
 // Firmware version (serial banner, README, USB kit VERSION.txt)
-#define CFG_FIRMWARE_VERSION  "v1.07"
+#define CFG_FIRMWARE_VERSION  "v1.08"
 
 // BLE appearance value advertised to Android TV.
 // 0x0180 = Generic Remote Control - avoids the PIN-entry flow triggered by
@@ -109,6 +109,14 @@
 // Set to 0 to disable heartbeat and [HID-DBG] lines (normal [HID] lines remain).
 #define CFG_SHIELD_DEBUG              1
 #define CFG_SHIELD_DEBUG_HEARTBEAT_MS  30000
+
+// -----------------------------------------------------------------------------
+// TiVo Power key (consumer 0x0030)
+// When 1: do NOT forward Power over BLE to the Shield. Use the TiVo remote's IR
+// Power (programmed TV code) instead — BLE Power puts the Shield to sleep/wake
+// and fights IR / CEC. Set to 0 to restore BLE Power pass-through.
+// -----------------------------------------------------------------------------
+#define CFG_IGNORE_TIVO_POWER_BLE  1
 
 // -----------------------------------------------------------------------------
 // Duplicate / bounce suppression

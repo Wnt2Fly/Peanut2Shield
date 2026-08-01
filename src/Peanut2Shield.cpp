@@ -679,6 +679,13 @@ void hidNotifyCallback(
     sKbReleaseAt = millis() + CFG_KB_PULSE_MS;
   } else if (length >= 2) {
     uint16_t usage = pData[0] | (pData[1] << 8);
+#if CFG_IGNORE_TIVO_POWER_BLE
+    if (usage == 0x0030) {
+      // IR handles TV power; BLE Power would sleep/wake the Shield.
+      DEV_LOGLN("=> (ignored — Power not forwarded to Shield)");
+      return;
+    }
+#endif
     OutputType outType;
     uint16_t   outCode;
     keymapLookupConsumer(usage, outType, outCode);

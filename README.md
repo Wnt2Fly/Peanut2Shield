@@ -125,7 +125,7 @@ Hold the **BOOT** button (GPIO 0) without releasing; actions fire automatically 
 | Home | `0x0223` | Keyboard Home |
 | Back | `0x0224` | Keyboard ESC |
 | OK / Select | `0x0041` | Consumer pass-through |
-| Power | `0x0030` | Consumer pass-through (forced 30 ms release pulse) |
+| Power | `0x0030` | **Ignored over BLE by default** (`CFG_IGNORE_TIVO_POWER_BLE=1`) — use TiVo IR Power; set to `0` in `config.h` to forward to Shield |
 | Navigation (▲▼◀▶) | `0x0042`–`0x0045` | Consumer pass-through; relaxed dedup (see below) |
 | All other buttons | — | Consumer pass-through |
 
@@ -139,13 +139,15 @@ If **Power**, **Volume**, **Input**, or **Mute** feel wrong over BLE (no respons
 
 ## Power & volume via TiVo remote IR (optional)
 
-Peanut2Shield forwards Power and Volume as BLE consumer keys. On some setups that is unreliable; however if you have an external AV system or soundbar, it may immediately work via CEC. If you have volume/power issues you can leave navigation and app keys on BLE through the bridge, and use the **TiVo remote’s own IR LED** for Power and Volume instead (programmed with a TV code).
+**Power over BLE is ignored by default** (`CFG_IGNORE_TIVO_POWER_BLE=1` in `config.h`). The TiVo remote still emits Power on BLE, but Peanut2Shield does **not** forward it to the Shield — that was sleeping/waking the Shield while IR handles the TV. Program the remote’s **IR Power** for the TV; navigation and app keys still go over BLE. Set `CFG_IGNORE_TIVO_POWER_BLE` to `0` only if you want BLE Power again.
+
+Volume (and other keys) still forward over BLE unless you remap them. On some setups volume/power over BLE is unreliable; with an AV system or soundbar, volume may work via CEC. You can use the **TiVo remote’s own IR LED** for Volume/Mute as well (programmed with a TV or amp code).
 
 The Stream 4K remote is not using the Shield’s IR blaster — it sends infrared from the remote body toward your TV or soundbar.
 
 ### Shield TV (CEC)
 
-On the Shield, leave **main HDMI-CEC enabled**, but **turn off CEC for volume and power** so the Shield does not try to handle those buttons over CEC while the TiVo remote is using IR for them.
+On the Shield, leave **main HDMI-CEC enabled**, but **turn off CEC for volume and power** so the Shield does not fight IR for those keys.
 
 Exact menu names vary by Shield model and Android TV version; look under **Settings → Device Preferences → Display & Sound** (HDMI-CEC).
 
@@ -488,7 +490,7 @@ Platform: `espressif32`, framework: `arduino`, board: `esp32-s3-devkitc-1` with 
 - **Key-release pulse** — Keyboard-translated buttons get a forced 30 ms key-up (`CFG_KB_PULSE_MS`) so the Shield doesn't auto-repeat them on hold.
 - **Bounce guard** — `CFG_BOUNCE_GUARD_ACTION_MS` suppresses the same usage code arriving too soon after key-up (currently **0 ms**, disabled).  Increase if action buttons double-fire.  Nav keys always skip it.
 - **Nav key fast-path** — Navigation keys (0x0042–0x0045) skip the bounce guard and release immediately on all-zero idle reports instead of waiting for the 50 ms all-zero guard (`CFG_ALL_ZERO_GUARD_MS`).  Identical-report hold dedup still applies to all keys.
-- **Power key pulse** — The Power key (0x0030) also gets a forced 30 ms release rather than relying on the TiVo's key-up timing.
+- **Power key** — By default (`CFG_IGNORE_TIVO_POWER_BLE=1`) consumer Power (`0x0030`) is **not** forwarded to the Shield (use TiVo IR). Set to `0` to restore BLE Power with a forced 30 ms release pulse.
 - **NVS namespaces** — `tivo` (address + `trusted` after 5 s link), `shield` (address after CCCD), `keymap` (custom remaps — storage only; no runtime UI yet). NimBLE bond keys use `CONFIG_BT_NIMBLE_NVS_PERSIST` in `platformio.ini`.
 - **Boot reconnect** — On power-up with both bonds stored, TiVo central reconnect is deferred for `CFG_SHIELD_RECONNECT_BOOT_MS` (8 s) so the Shield can reconnect while peripheral advertising is still running. TiVo connect pauses advertising briefly; once TiVo HID setup finishes, advertising resumes if the Shield is not yet linked. Tune the delay in `config.h` if your Shield needs more time after wake.
 - **LED** — Non-blocking state machine driven by `ledTick()` in `loop()`. Priority: Activity (white) > base pattern. Purple slow blink = Shield pairing; deep orange double-flash = TiVo pairing; green = ready. Global brightness controlled by `CFG_LED_BRIGHTNESS` in `config.h`.

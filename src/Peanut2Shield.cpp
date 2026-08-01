@@ -1026,9 +1026,9 @@ static void buttonTick() {
 // Arduino setup / loop
 // ============================================================
 
-// USB option 1 (app-only) keeps the NVS partition. Old BLE controller config there
-// can make esp_bt_controller_init fail with "Config struct mismatch" / ESP_ERR_NO_MEM.
-// Erase NVS when firmware version changes or NVS is corrupt.
+// Stale NVS (e.g. after a partial flash) can make esp_bt_controller_init fail with
+// "Config struct mismatch" / ESP_ERR_NO_MEM. Erase NVS when firmware version changes
+// or NVS is corrupt.
 static void peanutEnsureNvsCompatible() {
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {

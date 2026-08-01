@@ -9,15 +9,3 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
-
-# USB kit — built by pack-usb-drive.bat / pack/pack.bat (do not commit)
-usb-drive/VERSION.txt
-usb-drive/firmware/update/firmware.bin
-usb-drive/firmware/full/*.bin
-usb-drive/firmware/full/combined.bin
-
-# USB kit — bundled flasher (downloaded by pack/bundle-flasher.bat)
-usb-drive/tools/win/espflash.exe
-usb-drive/tools/win/espflash-dl.zip
-
-# Keep: usb-drive/pack/vendor/boot_app0.bin (vendored, small)

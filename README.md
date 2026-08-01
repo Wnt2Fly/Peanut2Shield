@@ -26,7 +26,7 @@ The ESP32-S3 simultaneously acts as:
 
 When a button is pressed on the TiVo remote, the firmware translates it (if needed) and forwards it to the Shield in real time.  Shield and TiVo bond addresses are stored in **NVS**; BLE keys persist across reboot when NimBLE bonding is enabled. After a normal reset or power cycle, the bridge **reconnects to both devices automatically** — Shield first (while advertising), then TiVo — and returns to **steady green** when both links are up.
 
-**Updating firmware:** [PlatformIO](#platformio-developers) for developers, or copy **[`usb-drive/`](#usb-update-kit-no-platformio)** to a USB stick — **`UPDATE.bat`** (Windows) or **`UPDATE.sh`** (Linux).
+**Updating firmware:** use [PlatformIO](#building--flashing) (`pio run --target upload`).
 
 ---
 
@@ -299,70 +299,9 @@ The source file `case/waveshare esp32-s3-zero_case.scad` is a parametric [OpenSC
 
 ## Building & flashing
 
-Two ways to install or update firmware on the Waveshare ESP32-S3-Zero:
+Firmware is built and flashed with **[PlatformIO](https://platformio.org/)** (CLI or VS Code extension) and a USB-C **data** cable.
 
-| Method | Who it's for | What you need |
-|--------|----------------|---------------|
-| **[USB update kit](#usb-update-kit-no-platformio)** | Family / another PC | `usb-drive/` — **`UPDATE.bat`** (Windows, no Python) |
-| **PlatformIO** (below) | Developers editing the code | VS Code + PlatformIO, USB-C cable |
-
-After any flash, press the board **RESET** button once. The ESP32-S3-Zero uses native USB-CDC, so upload does not auto-reboot the chip.
-
----
-
-### USB update kit (no PlatformIO)
-
-Copy the entire **`usb-drive/`** folder to a USB stick. On **Windows, no Python** is required (`tools/win/espflash.exe` is bundled).
-
-**Layout:**
-
-```
-usb-drive/
-├── UPDATE.bat              ← double-click (Windows)
-├── UPDATE.sh               ← Linux menu
-├── START-HERE.txt          ← user guide (read this)
-├── VERSION.txt
-├── docs/
-│   ├── windows.txt
-│   └── linux.txt
-├── firmware/
-│   ├── update/firmware.bin   — app-only (normal update)
-│   └── full/                 — bootloader + partitions + app
-├── tools/
-│   ├── win/                  — espflash.exe + flash scripts
-│   └── linux/                — flash scripts (needs pip esptool)
-└── pack/                     — maintainer: build + bundle (ignore on stick)
-    ├── pack.bat / pack.sh
-    └── vendor/boot_app0.bin
-```
-
-**Build the kit (maintainer, from project root):**
-
-```bat
-pack-usb-drive.bat
-rem or:  usb-drive\pack\pack.bat
-```
-
-```bash
-./pack-usb-drive.sh
-rem or:  ./usb-drive/pack/pack.sh
-```
-
-Then copy **`usb-drive/`** to the stick. Re-run after each firmware change.
-
-**End user (Windows):** double-click **`UPDATE.bat`** → see **`START-HERE.txt`** if you want steps first.
-
-**End user (Linux):** `./UPDATE.sh` → see **`docs/linux.txt`** (Python + esptool one-time).
-
-**Pairing:** option 1 usually keeps bonds. Option 2 (full fix) erases the chip — re-pair Shield and TiVo.
-
-**Yellow LED stuck:** use **UPDATE.bat → option 2** (full erase + flash).
-
----
-
-### PlatformIO (developers)
-
-**Requirements:** [PlatformIO](https://platformio.org/) CLI or VS Code extension, USB-C **data** cable.
+After any flash, press the board **RESET** button once. The ESP32-S3-Zero uses native USB-CDC, so upload does not always auto-reboot the chip.
 
 **Build:**
 
@@ -376,10 +315,10 @@ pio run
 pio run --target upload
 ```
 
-**Recover a crash-looping board** (full erase + upload — same as UPDATE.bat option 2):
+**Recover a crash-looping board** (full erase + upload — clears bad NVS):
 
 ```bash
-# Windows — double-click or:
+# Windows helper:
 flash-recover.bat COM20
 
 # Or manually:
@@ -412,24 +351,22 @@ On PC USB power, expect brief **yellow**, then **purple slow blink** if nothing 
 | Symptom | Likely cause | Fix |
 |---------|----------------|-----|
 | Yellow **~1–2 s**, then purple **blink** | Normal boot | Pair Shield if new; ignore if already green behind TV |
-| Yellow **forever** or keeps restarting | BLE crash loop (`ESP_ERR_NO_MEM` on serial) | **`UPDATE.bat` → option 2** or **`flash-recover.bat COM<N>`** |
+| Yellow **forever** or keeps restarting | BLE crash loop (`ESP_ERR_NO_MEM` on serial) | **`flash-recover.bat COM<N>`** or `pio run -t erase` then upload |
 | **Solid purple** (not blinking) after power cycle | USB host enumerated serial but nothing reads it (Shield USB / PC without monitor) | Power from a **wall USB adapter**; avoid Shield USB. Optional: charge-only cable if you must use Shield power |
 | **Fast** yellow blink | BOOT button held or stuck | Release BOOT; check case isn’t pressing the button |
 | **Red** slow blink | No PSRAM on chip | Wrong board — need **Waveshare ESP32-S3-Zero (FH4R2)** with 2 MB PSRAM |
 
 ### Serial shows `ESP_ERR_NO_MEM` or `Config struct mismatch`
 
-Usually **stale NVS** after a **USB option 1** (app-only) update, or PSRAM not enabled. The app partition updates but old Bluetooth settings stay behind and v1.02 could crash-loop.
+Usually **stale NVS** after a partial flash, or PSRAM not enabled.
 
 Fix:
 
 1. Close the serial monitor (Ctrl+C).
-2. **UPDATE.bat → option 2** (full erase + flash), or `flash-recover.bat COM<N>` from a dev PC.
-3. Press **RESET** once; expect **purple slow blink** within a few seconds.
+2. **`flash-recover.bat COM<N>`** (or `pio run -t erase` then upload).
+3. Press **RESET** once; expect **purple slow blink** within a few seconds. Re-pair Shield and TiVo.
 
-**v1.03+** clears incompatible NVS on first boot after a bad update (re-pair once).
-
-Normal update (option 1) does **not** clear NVS — do **not** use option 1 on a yellow/crash-looping board.
+**v1.03+** also clears incompatible NVS on first boot after a firmware version change (re-pair once).
 
 ### Upload / flash errors
 
@@ -452,15 +389,6 @@ TiVo is connected but Shield is not. Wait ~10 s after reboot (v1.02 reconnect wi
 ├── flash-recover.bat           # Windows: erase + upload (recover crash loop)
 ├── sdkconfig.defaults          # PSRAM / BLE memory settings for ESP32-S3-Zero
 ├── tivo_programming_codes.txt  # TiVo IR codes (power, vol, input, AV) if CEC fails
-├── pack-usb-drive.bat          # wrapper → usb-drive/pack/pack.bat
-├── usb-drive/                  # USB stick update kit
-│   ├── UPDATE.bat / UPDATE.sh
-│   ├── START-HERE.txt
-│   ├── VERSION.txt
-│   ├── docs/windows.txt / linux.txt
-│   ├── firmware/update/ / full/
-│   ├── tools/win/ / linux/
-│   └── pack/pack.bat / pack.sh
 ├── platformio.ini              # Board, platform, library dependencies
 ├── case/
 │   ├── base.stl                # Bottom tray (3D print)
@@ -473,7 +401,10 @@ TiVo is connected but Shield is not. Wait ~10 s after reboot (v1.02 reconnect wi
     ├── hid_peripheral.cpp      # BLE peripheral: HID GATT server, report sending
     ├── hid_peripheral.h
     ├── keymap.cpp              # Translation table, NVS persistence
-    └── keymap.h
+    ├── keymap.h
+    ├── boot_early.cpp          # Silence USB serial hang before setup
+    ├── devlog.h / devlog.cpp   # Serial logging only when a host is connected
+    └── …
 ```
 
 ---

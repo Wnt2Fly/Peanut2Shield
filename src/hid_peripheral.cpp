@@ -81,11 +81,37 @@ static uint16_t              sShieldConnHandle    = BLE_HS_CONN_HANDLE_NONE;
 // true between onConnect and the first CCCD write — Shield is doing service discovery
 static bool                  sShieldNegotiating   = false;
 static bool                  sAdvPausedForTivo      = false;
+static bool                  sTivoLinkActive        = false;
+static bool                  sAdvSlowForTivo        = false;
 
 #if CFG_SHIELD_DEBUG
 static void shieldDebugLogAdv(const char* tag);
 static void shieldDebugLogConnDesc(const char* tag, ble_gap_conn_desc* desc);
 #endif
+
+// Start (or restart) advertising with intervals appropriate for dual-role state.
+static void startAdvertisingAppropriate() {
+  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+  if (!pAdv) return;
+
+  const bool slow = sTivoLinkActive && !sShieldConn;
+  if (pAdv->isAdvertising()) pAdv->stop();
+  if (slow) {
+    pAdv->setMinInterval(CFG_ADV_SLOW_MIN_INTERVAL);
+    pAdv->setMaxInterval(CFG_ADV_SLOW_MAX_INTERVAL);
+  } else {
+    pAdv->setMinInterval(CFG_ADV_MIN_INTERVAL);
+    pAdv->setMaxInterval(CFG_ADV_MAX_INTERVAL);
+  }
+  pAdv->start();
+  sAdvPausedForTivo = false;
+  sAdvSlowForTivo   = slow;
+  if (slow) {
+    DEV_LOGLN("[HID] Advertising (slow) — protecting TiVo central link.");
+  } else {
+    DEV_LOGLN("[HID] Advertising (fast).");
+  }
+}
 
 // Log every CCCD write so we can confirm the Shield is enabling notifications
 class ReportCallbacks : public NimBLECharacteristicCallbacks {
@@ -142,7 +168,9 @@ class PeriphCallbacks : public NimBLEServerCallbacks {
     sShieldConn        = false;
     sShieldNegotiating = false;
     sShieldConnHandle  = BLE_HS_CONN_HANDLE_NONE;
-    NimBLEDevice::getAdvertising()->start();
+    // Prefer slow advertising if TiVo is still linked — fast 20–40 ms re-adv
+    // after Shield power-off often drops the TiVo central connection.
+    startAdvertisingAppropriate();
 #if CFG_SHIELD_DEBUG
     shieldDebugLogAdv("after re-adv");
 #endif
@@ -264,9 +292,11 @@ const char* hidGetShieldState() {
 #if CFG_SHIELD_DEBUG
 static void shieldDebugLogAdv(const char* tag) {
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
-  DEV_LOGF("[HID-DBG] %s: state=%s conn=%d advPausedForTivo=%d isAdvertising=%d bonded=%d\r\n",
+  DEV_LOGF("[HID-DBG] %s: state=%s conn=%d advPausedForTivo=%d advSlow=%d "
+                "tivoLink=%d isAdvertising=%d bonded=%d\r\n",
                 tag, hidGetShieldState(), sShieldConn ? 1 : 0,
-                sAdvPausedForTivo ? 1 : 0,
+                sAdvPausedForTivo ? 1 : 0, sAdvSlowForTivo ? 1 : 0,
+                sTivoLinkActive ? 1 : 0,
                 (pAdv && pAdv->isAdvertising()) ? 1 : 0,
                 sHasShieldAddr ? 1 : 0);
 }
@@ -314,11 +344,13 @@ void hidShieldDebugTick(bool tivoConnected, bool tivoReady, bool tivoCentralBusy
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
 
   DEV_LOGF("[HID-DBG] heartbeat: Shield=%s up=%lu ms lastDrop=%lu ms ago "
-                "itvl=%u sup=%u | TiVo conn=%d ready=%d centralBusy=%d | adv=%d paused=%d\r\n",
+                "itvl=%u sup=%u | TiVo conn=%d ready=%d centralBusy=%d | "
+                "adv=%d paused=%d slow=%d\r\n",
                 hidGetShieldState(), upMs, sinceDrop,
                 sShieldLastConnItvl, sShieldLastSupervision,
                 tivoConnected ? 1 : 0, tivoReady ? 1 : 0, tivoCentralBusy ? 1 : 0,
-                (pAdv && pAdv->isAdvertising()) ? 1 : 0, sAdvPausedForTivo ? 1 : 0);
+                (pAdv && pAdv->isAdvertising()) ? 1 : 0, sAdvPausedForTivo ? 1 : 0,
+                sAdvSlowForTivo ? 1 : 0);
 }
 #endif
 
@@ -449,19 +481,51 @@ void hidPauseForTivoCentral() {
 #endif
   }
   sAdvPausedForTivo = true;
+  sAdvSlowForTivo   = false;
 }
 
 void hidResumeAfterTivoCentral() {
-  if (!sAdvPausedForTivo) return;
-  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
-  if (pAdv && !pAdv->isAdvertising()) {
-    pAdv->start();
-    DEV_LOGLN("[HID] Advertising resumed.");
+  if (!sAdvPausedForTivo) {
+    // Shield disconnect may already have started advertising; still refresh
+    // intervals if TiVo link state wants slow/fast differently.
+    if (!sShieldConn) {
+      const bool wantSlow = sTivoLinkActive;
+      if (wantSlow != sAdvSlowForTivo) startAdvertisingAppropriate();
+    }
+    return;
   }
-  sAdvPausedForTivo = false;
+  if (sShieldConn) {
+    sAdvPausedForTivo = false;
+    sAdvSlowForTivo   = false;
+#if CFG_SHIELD_DEBUG
+    shieldDebugLogAdv("TiVo central done (Shield up, no adv)");
+#endif
+    return;
+  }
+  startAdvertisingAppropriate();
 #if CFG_SHIELD_DEBUG
   shieldDebugLogAdv("TiVo central done");
 #endif
+}
+
+void hidSetTivoLinkActive(bool active) {
+  if (sTivoLinkActive == active) return;
+  sTivoLinkActive = active;
+#if CFG_SHIELD_DEBUG
+  DEV_LOGF("[HID-DBG] TiVo link active=%d\r\n", active ? 1 : 0);
+#endif
+  if (sShieldConn || sAdvPausedForTivo) return;
+
+  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+  if (!pAdv) return;
+
+  const bool wantSlow = active;
+  if (pAdv->isAdvertising()) {
+    if (wantSlow != sAdvSlowForTivo) startAdvertisingAppropriate();
+  } else if (!active) {
+    // TiVo dropped while not advertising — restore fast discoverability.
+    startAdvertisingAppropriate();
+  }
 }
 
 // Rebuild and start advertising with the correct HID service data.
@@ -478,9 +542,7 @@ static void restartAdvertising() {
   // in hidPeripheralInit() and persist in the NimBLEAdvertising object after stop().
   // Calling addServiceUUID again would add a duplicate 0x1812 entry, producing a
   // malformed advertising PDU that Android TV silently ignores.
-  pAdv->setMinInterval(CFG_ADV_MIN_INTERVAL);
-  pAdv->setMaxInterval(CFG_ADV_MAX_INTERVAL);
-  pAdv->start();
+  startAdvertisingAppropriate();
   DEV_LOGF("[HID] Advertising restarted — isAdvertising=%d\r\n",
                 pAdv->isAdvertising() ? 1 : 0);
 }

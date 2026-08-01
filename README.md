@@ -1,6 +1,6 @@
 # Peanut2Shield — TiVo Remote BLE HID Translator
 
-**Firmware v1.02**
+**Firmware v1.09**
 
 An ESP32-S3 firmware that bridges a **TiVo Stream 4K remote** to an **Nvidia Shield TV** over Bluetooth LE — no WiFi, no app, no cloud.
 
@@ -126,6 +126,7 @@ Hold the **BOOT** button (GPIO 0) without releasing; actions fire automatically 
 | Back | `0x0224` | Keyboard ESC |
 | OK / Select | `0x0041` | Consumer pass-through |
 | Power | `0x0030` | **Ignored over BLE by default** (`CFG_IGNORE_TIVO_POWER_BLE=1`) — use TiVo IR Power; set to `0` in `config.h` to forward to Shield |
+| Vol+ / Vol− / Mute | `0x00E9` / `0x00EA` / `0x00E2` | **Ignored over BLE by default** (`CFG_IGNORE_TIVO_VOLUME_BLE=1`) — use TiVo IR volume; set to `0` in `config.h` to forward to Shield |
 | Navigation (▲▼◀▶) | `0x0042`–`0x0045` | Consumer pass-through; relaxed dedup (see below) |
 | All other buttons | — | Consumer pass-through |
 
@@ -133,15 +134,20 @@ Keyboard-translated buttons get a forced **30 ms key-up pulse** so the Shield do
 
 To launch apps or change what a button does on the Shield, use **[Button Mapper](#custom-button-mapping-shield-side)** (recommended).  To change what the bridge sends before it reaches the Shield, edit `CFG_DEFAULT_KEYMAP` in `src/config.h` and reflash.
 
-If **Power**, **Volume**, **Input**, or **Mute** feel wrong over BLE (no response, wrong device, or fighting the TV), see **[Power & volume via TiVo remote IR](#power--volume-via-tivo-remote-ir-optional)** below.
+**Power**, **Volume**, and **Mute** are ignored over BLE by default so they do not fight the TiVo remote’s IR (or CEC). See **[Power & volume via TiVo remote IR](#power--volume-via-tivo-remote-ir)** below. For **Input** or other IR-only keys, program IR on the remote the same way.
 
 ---
 
-## Power & volume via TiVo remote IR (optional)
+## Power & volume via TiVo remote IR
 
-**Power over BLE is ignored by default** (`CFG_IGNORE_TIVO_POWER_BLE=1` in `config.h`). The TiVo remote still emits Power on BLE, but Peanut2Shield does **not** forward it to the Shield — that was sleeping/waking the Shield while IR handles the TV. Program the remote’s **IR Power** for the TV; navigation and app keys still go over BLE. Set `CFG_IGNORE_TIVO_POWER_BLE` to `0` only if you want BLE Power again.
+**Power, Vol+, Vol−, and Mute over BLE are ignored by default** (`CFG_IGNORE_TIVO_POWER_BLE=1` and `CFG_IGNORE_TIVO_VOLUME_BLE=1` in `config.h`). The TiVo remote still emits those keys on BLE, but Peanut2Shield does **not** forward them to the Shield — that was sleeping/waking the Shield (Power) or double-adjusting volume with IR/CEC. Program the remote’s **IR Power** and **IR Volume/Mute** for the TV or amp; navigation and app keys still go over BLE.
 
-Volume (and other keys) still forward over BLE unless you remap them. On some setups volume/power over BLE is unreliable; with an AV system or soundbar, volume may work via CEC. You can use the **TiVo remote’s own IR LED** for Volume/Mute as well (programmed with a TV or amp code).
+| Flag in `config.h` | Default | Effect when `1` |
+|--------------------|---------|-----------------|
+| `CFG_IGNORE_TIVO_POWER_BLE` | `1` | Do not forward Power (`0x0030`) over BLE |
+| `CFG_IGNORE_TIVO_VOLUME_BLE` | `1` | Do not forward Vol+ / Vol− / Mute (`0x00E9` / `0x00EA` / `0x00E2`) over BLE |
+
+Set either flag to `0` and reflash only if you want that key group over BLE again.
 
 The Stream 4K remote is not using the Shield’s IR blaster — it sends infrared from the remote body toward your TV or soundbar.
 
@@ -151,7 +157,7 @@ On the Shield, leave **main HDMI-CEC enabled**, but **turn off CEC for volume an
 
 Exact menu names vary by Shield model and Android TV version; look under **Settings → Device Preferences → Display & Sound** (HDMI-CEC).
 
-### TiVo remote — program IR codes (when CEC is not enough)
+### TiVo remote — program IR codes
 
 Use TiVo’s manual code entry so **Power**, **Volume**, **Mute**, **Input**, and **AV / amplifier** keys on the remote control your TV or soundbar over **IR**. Navigation and app keys still go to the Shield through Peanut2Shield over BLE.
 
@@ -203,7 +209,7 @@ Same idea for other mapped buttons:
 | Skip | F10 | Any app |
 | Netflix | F11 | Keep Netflix or map to another app |
 
-Consumer pass-through buttons (OK, nav, volume, etc.) are not F-keys — remap them in Button Mapper the same way if the app detects the consumer key, or change the firmware default in `config.h`.
+Consumer pass-through buttons (OK, nav, etc.) are not F-keys — remap them in Button Mapper the same way if the app detects the consumer key, or change the firmware default in `config.h`. Volume/Mute/Power are not forwarded over BLE by default (IR); see above.
 
 ### Firmware-level remapping (advanced)
 
@@ -261,6 +267,8 @@ Power from a **wall USB adapter** (not Shield USB with a data cable). See [Power
 If the LED is **solid purple** (not blinking), the board is hung on USB serial — move to wall power or a charge-only cable.
 
 If you see **white flashes** but the Shield does not respond, the TiVo link is up but the Shield is not — wait a few seconds, wake the Shield, or hold **BOOT 8 s** to re-pair the Shield side only.
+
+**Shield powered off while TiVo stays paired:** the bridge keeps the TiVo link when possible and uses **slow advertising** so re-advertising for the Shield does not starve the remote. When the Shield comes back, it should reconnect without forcing a TiVo re-pair. If the remote went to sleep, press any button once to wake it.
 
 ---
 
@@ -490,9 +498,10 @@ Platform: `espressif32`, framework: `arduino`, board: `esp32-s3-devkitc-1` with 
 - **Key-release pulse** — Keyboard-translated buttons get a forced 30 ms key-up (`CFG_KB_PULSE_MS`) so the Shield doesn't auto-repeat them on hold.
 - **Bounce guard** — `CFG_BOUNCE_GUARD_ACTION_MS` suppresses the same usage code arriving too soon after key-up (currently **0 ms**, disabled).  Increase if action buttons double-fire.  Nav keys always skip it.
 - **Nav key fast-path** — Navigation keys (0x0042–0x0045) skip the bounce guard and release immediately on all-zero idle reports instead of waiting for the 50 ms all-zero guard (`CFG_ALL_ZERO_GUARD_MS`).  Identical-report hold dedup still applies to all keys.
-- **Power key** — By default (`CFG_IGNORE_TIVO_POWER_BLE=1`) consumer Power (`0x0030`) is **not** forwarded to the Shield (use TiVo IR). Set to `0` to restore BLE Power with a forced 30 ms release pulse.
+- **Power / volume over BLE** — By default Power (`CFG_IGNORE_TIVO_POWER_BLE=1`) and Vol+/Vol−/Mute (`CFG_IGNORE_TIVO_VOLUME_BLE=1`) are **not** forwarded to the Shield (use TiVo IR). Set either flag to `0` to restore BLE pass-through for that group. If Power is forwarded, it uses a forced 30 ms release pulse.
 - **NVS namespaces** — `tivo` (address + `trusted` after 5 s link), `shield` (address after CCCD), `keymap` (custom remaps — storage only; no runtime UI yet). NimBLE bond keys use `CONFIG_BT_NIMBLE_NVS_PERSIST` in `platformio.ini`.
 - **Boot reconnect** — On power-up with both bonds stored, TiVo central reconnect is deferred for `CFG_SHIELD_RECONNECT_BOOT_MS` (8 s) so the Shield can reconnect while peripheral advertising is still running. TiVo connect pauses advertising briefly; once TiVo HID setup finishes, advertising resumes if the Shield is not yet linked. Tune the delay in `config.h` if your Shield needs more time after wake.
+- **Shield drop while TiVo linked** — After a mid-session Shield disconnect, peripheral advertising uses slow intervals (`CFG_ADV_SLOW_MIN_INTERVAL` / `CFG_ADV_SLOW_MAX_INTERVAL`, 100–300 ms) while the TiVo central link is still up, so fast 20–40 ms re-advertise does not starve the remote. When TiVo also drops, advertising returns to the fast pairing intervals.
 - **LED** — Non-blocking state machine driven by `ledTick()` in `loop()`. Priority: Activity (white) > base pattern. Purple slow blink = Shield pairing; deep orange double-flash = TiVo pairing; green = ready. Global brightness controlled by `CFG_LED_BRIGHTNESS` in `config.h`.
 - **Shield dropout debug** — `CFG_SHIELD_DEBUG=1` in `config.h` logs `[HID-DBG]` on connect/disconnect (uptime, conn interval, supervision timeout, advertising state), TiVo central pause/resume, fast-params timing, 30 s heartbeat, and ESP reset reason at boot. Set `CFG_SHIELD_DEBUG` to `0` to silence.
 

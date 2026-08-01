@@ -93,6 +93,11 @@ TROUBLESHOOTING
   → Move to a WALL USB adapter. Optional: charge-only cable into Shield only.
   → Healthy wait-for-Shield is PURPLE SLOW BLINK, not solid.
 
+Volume / Power double-fires (BLE + IR)
+  → Normal on older firmware. v1.09+ ignores Power/Vol/Mute over BLE by default.
+  → Program IR on the TiVo remote; turn off Shield CEC for volume and power.
+  → Developers: CFG_IGNORE_TIVO_POWER_BLE / CFG_IGNORE_TIVO_VOLUME_BLE in config.h.
+
 "Flash says SUCCESS but LED still yellow"
   → VERSION.txt on the stick is probably old. PlatformIO upload uses the latest
     build; UPDATE.bat uses whatever .bin files are on the USB stick.

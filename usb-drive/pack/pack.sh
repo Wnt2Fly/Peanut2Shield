@@ -3,7 +3,11 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 echo "Building Peanut2Shield..."
-pio run -e waveshare-esp32-s3-zero
+if command -v pio >/dev/null 2>&1; then
+  pio run -e waveshare-esp32-s3-zero
+else
+  platformio run -e waveshare-esp32-s3-zero
+fi
 
 BUILD=".pio/build/waveshare-esp32-s3-zero"
 KIT="usb-drive"
@@ -39,7 +43,9 @@ if [[ -n "${BOOTAPP}" ]]; then
   cp -f "${BOOTAPP}" "${KIT}/firmware/full/boot_app0.bin"
   cp -f "${BOOTAPP}" "${KIT}/pack/vendor/boot_app0.bin"
   echo "Building combined full-flash image..."
-  if pio pkg exec --package tool-esptoolpy -- esptool.py --chip esp32s3 merge_bin \
+  PIO_CMD=pio
+  command -v pio >/dev/null 2>&1 || PIO_CMD=platformio
+  if "${PIO_CMD}" pkg exec --package tool-esptoolpy -- esptool.py --chip esp32s3 merge_bin \
       -o "${KIT}/firmware/full/combined.bin" --flash_size 4MB \
       0x0 "${BUILD}/bootloader.bin" \
       0x8000 "${BUILD}/partitions.bin" \

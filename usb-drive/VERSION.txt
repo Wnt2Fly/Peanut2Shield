@@ -1,5 +1,5 @@
 Peanut2Shield USB update kit
-Firmware: v1.06
-Built: Thu 06/11/2026 11:51:21.86
+Firmware: v1.09
+Built: Sat 08/01/2026 13:41:59.90
 Board: waveshare-esp32-s3-zero
-Source: s:\Arduino\Peanut2Shield
+Source: C:\Users\tmcca\Downloads\Peanut2Shield

@@ -10,7 +10,12 @@ if not defined PIO_HOME (
 )
 
 echo Building Peanut2Shield...
-call pio run -e waveshare-esp32-s3-zero
+where pio >nul 2>&1
+if not errorlevel 1 (
+  call pio run -e waveshare-esp32-s3-zero
+) else (
+  call platformio run -e waveshare-esp32-s3-zero
+)
 if errorlevel 1 (
   echo Build failed.
   pause
@@ -63,7 +68,12 @@ if defined BOOTAPP (
 )
 
 echo Building combined full-flash image...
-call pio pkg exec --package tool-esptoolpy -- esptool.py --chip esp32s3 merge_bin -o "%KIT%\firmware\full\combined.bin" --flash_size 4MB 0x0 "%BUILD%\bootloader.bin" 0x8000 "%BUILD%\partitions.bin" 0xe000 "%KIT%\firmware\full\boot_app0.bin" 0x10000 "%BUILD%\firmware.bin"
+where pio >nul 2>&1
+if not errorlevel 1 (
+  call pio pkg exec --package tool-esptoolpy -- esptool.py --chip esp32s3 merge_bin -o "%KIT%\firmware\full\combined.bin" --flash_size 4MB 0x0 "%BUILD%\bootloader.bin" 0x8000 "%BUILD%\partitions.bin" 0xe000 "%KIT%\firmware\full\boot_app0.bin" 0x10000 "%BUILD%\firmware.bin"
+) else (
+  call platformio pkg exec --package tool-esptoolpy -- esptool.py --chip esp32s3 merge_bin -o "%KIT%\firmware\full\combined.bin" --flash_size 4MB 0x0 "%BUILD%\bootloader.bin" 0x8000 "%BUILD%\partitions.bin" 0xe000 "%KIT%\firmware\full\boot_app0.bin" 0x10000 "%BUILD%\firmware.bin"
+)
 if errorlevel 1 (
   echo WARNING: could not build combined.bin — multi-step full flash will be used.
   del "%KIT%\firmware\full\combined.bin" 2>nul

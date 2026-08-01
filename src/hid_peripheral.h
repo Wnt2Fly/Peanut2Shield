@@ -30,6 +30,11 @@ void hidPauseForTivoCentral();
 // Resume advertising after TiVo central work finishes or aborts.
 void hidResumeAfterTivoCentral();
 
+// Tell the peripheral whether the TiVo central link is up (HID ready).
+// While TiVo is up and Shield is down, advertising uses slow intervals so the
+// dual-role radio does not starve the TiVo connection.
+void hidSetTivoLinkActive(bool active);
+
 // Send a single key-press on the keyboard report, no modifier.
 void hidSendKeyboard(uint8_t modifier, uint8_t keycode);
 

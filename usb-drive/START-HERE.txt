@@ -37,7 +37,7 @@ WHICH OPTION?
      LED stays YELLOW forever, SOLID PURPLE, remote stopped working, or new board.
      Clears the chip and re-flashes everything. Re-pair Shield + TiVo.
 
-  Check VERSION.txt on the stick — prefer v1.07 or newer.
+  Check VERSION.txt on the stick — prefer v1.09 or newer.
   If option 1 was used and the LED is now stuck, run option 2 with a fresh stick.
 
   Maintainer: run pack-usb-drive.bat on the build PC before copying usb-drive
@@ -49,6 +49,17 @@ AFTER FLASH
   Orange double-flash → pair TiVo: Power+TiVo, Vol− x3, TiVo, any button
   Solid green         → working
   Solid purple        → hung (wrong power — use wall adapter / charge-only)
+
+POWER / VOLUME / MUTE
+---------------------
+  Firmware does NOT send Power, Vol+, Vol−, or Mute over Bluetooth (default).
+  Program those keys on the TiVo remote with IR codes for your TV or amp
+  (see tivo_programming_codes.txt in the full project, or ask your kit builder).
+  On the Shield: leave CEC on, but turn OFF CEC for volume and power so IR
+  is not fighting the Shield.
+
+  Shield off, TiVo still paired: remote should stay linked; wake with a button
+  press if needed. Shield should reconnect when powered back on.
 
 DO NOT hold the tiny BOOT button unless you mean to clear pairing:
   5 sec = forget TiVo    8 sec = forget Shield    10 sec = factory reset

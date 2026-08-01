@@ -327,6 +327,7 @@ static void releaseTivoClient(NimBLEClient* client) {
   if (pClient == client) pClient = nullptr;
   sTivoConnecting = false;
   sTivoReady      = false;
+  hidSetTivoLinkActive(false);
   hidResumeAfterTivoCentral();
   if (client) NimBLEDevice::deleteClient(client);
 }
@@ -340,6 +341,7 @@ static void cleanupTivoClient() {
   sHavePendingAddr   = false;
   sTivoConnecting = false;
   sTivoReady      = false;
+  hidSetTivoLinkActive(false);
   hidResumeAfterTivoCentral();
   if (!client) return;
   if (client->isConnected()) client->disconnect();
@@ -686,6 +688,13 @@ void hidNotifyCallback(
       return;
     }
 #endif
+#if CFG_IGNORE_TIVO_VOLUME_BLE
+    if (usage == 0x00E9 || usage == 0x00EA || usage == 0x00E2) {
+      // IR handles TV/amp volume; BLE volume double-fires with IR/CEC.
+      DEV_LOGLN("=> (ignored — Volume/Mute not forwarded to Shield)");
+      return;
+    }
+#endif
     OutputType outType;
     uint16_t   outCode;
     keymapLookupConsumer(usage, outType, outCode);
@@ -869,6 +878,8 @@ static void tivoFinishSetup() {
   sTivoReady      = true;
   sTivoReadyAt    = millis();
   sTivoRetryAt    = 0;
+  // Mark TiVo up before resuming advertising so Shield-down re-adv stays slow.
+  hidSetTivoLinkActive(true);
   DEV_LOGF("[Central] TiVo linked — hold connection %u s to confirm bond...\r\n",
                 (unsigned)(CFG_TIVO_BOND_MIN_UP_MS / 1000));
 #if CFG_DEBUG_TIVO_ONLY

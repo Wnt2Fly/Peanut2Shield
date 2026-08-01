@@ -13,7 +13,7 @@
 #define CFG_BLE_DEVICE_NAME  "Peanut2Shield"
 
 // Firmware version (serial banner, README, USB kit VERSION.txt)
-#define CFG_FIRMWARE_VERSION  "v1.08"
+#define CFG_FIRMWARE_VERSION  "v1.09"
 
 // BLE appearance value advertised to Android TV.
 // 0x0180 = Generic Remote Control - avoids the PIN-entry flow triggered by
@@ -27,6 +27,11 @@
 
 #define CFG_ADV_MIN_INTERVAL  32   // 32 x 0.625 ms = 20 ms
 #define CFG_ADV_MAX_INTERVAL  64   // 64 x 0.625 ms = 40 ms
+
+// Slow advertising while TiVo central is still connected and Shield is down.
+// Fast 20–40 ms re-advertise after Shield drop starves the TiVo link (dual-role).
+#define CFG_ADV_SLOW_MIN_INTERVAL  160  // 160 x 0.625 ms = 100 ms
+#define CFG_ADV_SLOW_MAX_INTERVAL  480  // 480 x 0.625 ms = 300 ms
 
 // -----------------------------------------------------------------------------
 // BLE connection parameters
@@ -117,6 +122,14 @@
 // and fights IR / CEC. Set to 0 to restore BLE Power pass-through.
 // -----------------------------------------------------------------------------
 #define CFG_IGNORE_TIVO_POWER_BLE  1
+
+// -----------------------------------------------------------------------------
+// TiVo Volume / Mute (consumer 0x00E9 / 0x00EA / 0x00E2)
+// When 1: do NOT forward Vol+/Vol-/Mute over BLE. Use the TiVo remote's IR
+// volume (programmed TV or amp code) instead — BLE volume fights IR / CEC and
+// can double-adjust. Set to 0 to restore BLE volume pass-through.
+// -----------------------------------------------------------------------------
+#define CFG_IGNORE_TIVO_VOLUME_BLE  1
 
 // -----------------------------------------------------------------------------
 // Duplicate / bounce suppression

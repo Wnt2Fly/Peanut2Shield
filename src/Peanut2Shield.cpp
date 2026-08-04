@@ -299,6 +299,10 @@ static unsigned long sTivoRetryAt = 0;
 static unsigned long sShieldReadyAt = 0;
 static unsigned long sBootMs = 0;
 static bool sWasShieldReadyForTivo = false;
+// True after Shield completes CCCD at least once since this power-on.
+// Until then, do not start TiVo central — that used to stop advertising and
+// leave the LED purple then solid orange with no Shield resync.
+static bool sShieldEverReadyThisBoot = false;
 static bool sTivoSuppressReconnect = false;
 static bool sPendingForgetTiVo = false;
 static unsigned long sScanLogAt = 0;
@@ -408,13 +412,19 @@ static void scheduleTivoRetry() {
   sTivoRetryAt = millis() + CFG_TIVO_RETRY_MS;
 }
 
-// Shield side is "done" when CCCD negotiation finished, or bonded but disconnected.
+// Shield side is "done" for TiVo work when CCCD finished, or when Shield is
+// temporarily down after having linked this boot, or after the boot wait window
+// (advertising stays up — see hidPauseForTivoCentral).
 static bool shieldDoneForTivo() {
 #if CFG_DEBUG_TIVO_ONLY
   return true;
 #else
-  return hidShieldReady() ||
-         (hidHasShieldBond() && !hidPeripheralConnected());
+  if (hidShieldReady()) return true;
+  if (!hidHasShieldBond() || hidPeripheralConnected()) return false;
+  // After Shield linked once this boot, allow TiVo while Shield sleeps.
+  if (sShieldEverReadyThisBoot) return true;
+  // Cold boot: wait CFG_SHIELD_RECONNECT_BOOT_MS of advertising before TiVo.
+  return sBootMs && (millis() - sBootMs) >= CFG_SHIELD_RECONNECT_BOOT_MS;
 #endif
 }
 
@@ -440,14 +450,9 @@ static void tryStartTiVoCentral() {
   if (sTivoRetryAt && millis() < sTivoRetryAt) return;
 
 #if !CFG_DEBUG_TIVO_ONLY
-  // Let Shield reconnect to the peripheral before TiVo central pauses advertising.
-  if (hidHasShieldBond() && !hidShieldReady() && sBootMs &&
-      (millis() - sBootMs) < CFG_SHIELD_RECONNECT_BOOT_MS) {
-    return;
-  }
-
   // Let Shield finish CCCD + initial conn-param update before central work.
   if (hidShieldReady()) {
+    sShieldEverReadyThisBoot = true;
     if (!sWasShieldReadyForTivo) {
       sWasShieldReadyForTivo = true;
       sShieldReadyAt         = millis();
@@ -1178,6 +1183,7 @@ void loop() {
   {
     bool isReady = hidShieldReady();
     if (isReady && !sWasShieldReady) {
+      sShieldEverReadyThisBoot = true;
       sShieldParamsAt = millis() + CFG_SHIELD_FAST_PARAMS_DELAY_MS;
       DEV_LOGLN("[HID] Shield CCCD confirmed — fast params in 1 s.");
     }

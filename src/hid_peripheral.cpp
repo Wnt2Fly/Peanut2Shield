@@ -470,6 +470,21 @@ void hidReleaseConsumer() {
 }
 
 void hidPauseForTivoCentral() {
+  // Shield not linked: never go dark — Android cannot reconnect if we stop advertising.
+  // Use slow intervals so dual-role TiVo connect still gets radio time.
+  if (!sShieldConn) {
+    if (!sAdvPausedForTivo) {
+      DEV_LOGLN("[HID] TiVo connecting — keeping advertising (slow) for Shield.");
+#if CFG_SHIELD_DEBUG
+      DEV_LOGF("[HID-DBG] no-pause for TiVo (Shield conn=0 state=%s)\r\n",
+                    hidGetShieldState());
+#endif
+    }
+    sTivoLinkActive = true;
+    startAdvertisingAppropriate();
+    return;
+  }
+
   if (sAdvPausedForTivo) return;
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
   if (pAdv && pAdv->isAdvertising()) {

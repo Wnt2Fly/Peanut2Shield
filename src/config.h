@@ -13,7 +13,7 @@
 #define CFG_BLE_DEVICE_NAME  "Peanut2Shield"
 
 // Firmware version (serial banner, README, USB kit VERSION.txt)
-#define CFG_FIRMWARE_VERSION  "v1.10"
+#define CFG_FIRMWARE_VERSION  "v1.16"
 
 // BLE appearance value advertised to Android TV.
 // 0x0180 = Generic Remote Control - avoids the PIN-entry flow triggered by
@@ -159,7 +159,7 @@
 #define CFG_LED_COLOR_BOOT      255, 180,   0   // yellow  — boot blink (BLE init)
 #define CFG_LED_COLOR_SHIELD    180,   0, 255   // purple  — advertising, waiting for Shield
 #define CFG_LED_COLOR_TIVO      255,  42,   0   // deep orange — waiting for TiVo remote
-#define CFG_LED_COLOR_READY       0, 255,   0   // green   — both devices connected
+#define CFG_LED_COLOR_READY       0, 128,   0   // green   — both devices connected (½ prior brightness)
 #define CFG_LED_COLOR_RESET     255,   0,   0   // red     — factory-reset hold in progress
 #define CFG_LED_COLOR_ACTIVITY  255, 255, 255   // white   — button forwarded to Shield
 
@@ -195,18 +195,24 @@
 // Actions fire automatically at cumulative thresholds (no release required).
 // -----------------------------------------------------------------------------
 
+// BOOT button: short multi-press (not hold).
+//   3 presses → forget Shield
+//   4 presses → forget TiVo
+//   5 presses → factory reset
+// Presses must be within CFG_BTN_PRESS_GAP_MS of each other; after the gap,
+// the pending count executes.
 #define CFG_BOOT_BTN_PIN          0
+#define CFG_BTN_PRESS_GAP_MS      800   // idle time after last press → run action
+#define CFG_BTN_DEBOUNCE_MS        40
+#define CFG_BTN_CLICKS_SHIELD       3
+#define CFG_BTN_CLICKS_TIVO         4
+#define CFG_BTN_CLICKS_FACTORY      5
 
-// BOOT hold thresholds (cumulative — keep holding to reach each step):
-//   start     -> fast yellow blink (counting)
-//   4 s       -> orange double-flash (warning only)
-//   5 s       -> forget TiVo + purple quick-flash
-//   8 s       -> forget Shield + purple double-flash
-//  10 s       -> factory reset + red quick-flash → green quick-flash → slow blink
-#define CFG_BTN_WARN_MS        4000
-#define CFG_BTN_TIVO_MS        5000
-#define CFG_BTN_SHIELD_MS      8000
-#define CFG_BTN_FACTORY_MS    10000
+// Legacy names kept so older notes still compile if referenced elsewhere
+#define CFG_BTN_WARN_MS        3000
+#define CFG_BTN_TIVO_MS        3000
+#define CFG_BTN_SHIELD_MS      6000
+#define CFG_BTN_FACTORY_MS     9000
 
 // -----------------------------------------------------------------------------
 // NVS namespaces and keys

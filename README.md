@@ -98,17 +98,33 @@ The Shield also has no practical setting to “ignore COM / USB serial gadgets�
 
 ---
 
-## Boot button actions
+## Reset / forget bonds
 
-Hold the **BOOT** button (GPIO 0) without releasing; actions fire automatically at each threshold. While you hold (before any threshold), the LED **blinks yellow quickly** so you know the timer is running.
+### Serial commands (USB monitor)
 
-| Hold time | Action | LED after threshold |
-|-----------|--------|---------------------|
-| **(any hold start)** | — | Fast **yellow** blink while counting |
-| **4 s** | Warning only — keep holding | **Orange** double-flash |
-| **5 s** | Forget TiVo bond → restart TiVo scan | **Purple** 3 quick flashes; resumes yellow if still held |
-| **8 s** | Forget Shield bond → restart advertising | **Purple** double-flash |
-| **10 s** | Factory reset — forget both bonds, erase keymap NVS | **Red** 3 quick flashes → **green** 3 quick flashes → slow blink |
+Type a letter + Enter:
+
+| Key | Action |
+|-----|--------|
+| **t** | Forget **TiVo** only |
+| **s** | Forget **Shield** only |
+| **f** | **Factory reset** |
+| **i** | Status |
+| **h** | Help |
+
+### BOOT button (short presses)
+
+Press **BOOT** several times, then wait ~1 second (no more presses):
+
+| Presses | Action |
+|---------|--------|
+| **3** | Forget **Shield** |
+| **4** | Forget **TiVo** |
+| **5** | **Factory reset** |
+
+(1–2 presses do nothing.) Serial commands still work the same.
+
+After factory reset: purple blink → pair Shield, then orange → pair TiVo, then green.
 
 ---
 
@@ -250,9 +266,9 @@ The bridge is already scanning. Put the **TiVo Stream 4K** remote in BLE pairing
 
 | What to re-pair | Method | LED after |
 |-----------------|--------|-----------|
-| TiVo remote | Hold BOOT 5 s | Purple quick flash → deep orange double-flash; reset remote (Power+TiVo…) then any button for pairing |
-| Shield | Hold BOOT 8 s | Purple double-flash → slow blink (advertising for Shield) |
-| Both | Hold BOOT 10 s | Red quick flash → green quick flash → slow blink |
+| Both | Serial **f**, or BOOT **5** presses | Red flash → green flash → slow blink |
+| TiVo remote | Serial **t**, or BOOT **4** presses | Purple quick flash → orange; reset remote then any button |
+| Shield | Serial **s**, or BOOT **3** presses | Purple double-flash → slow blink |
 
 ### After reboot
 

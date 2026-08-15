@@ -80,11 +80,14 @@ static LedPattern    sLedChainNext    = LedPattern::Off;
 static bool          sFactoryLedSeq   = false;
 static bool          sBtnLedOverride  = false;
 static unsigned long sBtnAt           = 0;
-static uint8_t       sBtnLevel          = 0;   // 0=start, 1=4s, 2=5s, 3=8s, 4=10s
-static bool          sBtnHeld           = false;
+static uint8_t       sBtnClicks       = 0;   // multi-press count pending commit
+static bool          sBtnHeld         = false;
+static bool          sBtnStableDown   = false;
+static unsigned long sBtnDebounceAt   = 0;
 
 static void ledSetBase(LedPattern p) {
-  if (p == sLedBase && sLedCurrent != LedPattern::Activity) return;
+  // Only skip when already showing this base (not stuck on a finished one-shot).
+  if (p == sLedBase && sLedCurrent == p) return;
   sLedBase = p;
   if (sLedCurrent == LedPattern::Activity) return;
   sLedCurrent = p;
@@ -92,7 +95,7 @@ static void ledSetBase(LedPattern p) {
   sLedAt      = millis();
 }
 
-// Force a pattern immediately (used by button actions — ignores early-exit guard).
+// Force a pattern immediately (used by boot / non-button paths).
 static void ledForce(LedPattern p) {
   sLedBase = p;
   if (sLedCurrent != LedPattern::Activity) {
@@ -102,19 +105,19 @@ static void ledForce(LedPattern p) {
   }
 }
 
-// BOOT-button feedback; blocks syncLedState until released or animation finishes.
+// BOOT-button one-shots: change display only — never sLedBase.
+// Setting base to ConfirmOnce caused infinite fast flashes and blocked syncLedState
+// until another press (Activity) let sync recover the real pairing pattern.
 static void ledForceButton(LedPattern p) {
   sBtnLedOverride = true;
-  ledForce(p);
+  sLedCurrent     = p;
+  sLedStep        = 0;
+  sLedAt          = millis();
 }
 
 static void ledConfirmOnce(uint32_t color) {
   sConfirmColor = color;
   ledForceButton(LedPattern::ConfirmOnce);
-}
-
-static void resumeBootHoldIfPressed() {
-  if (sBtnHeld && sBtnLevel < 4) ledForceButton(LedPattern::BootHold);
 }
 
 static void startFactoryLedSequence() {
@@ -189,10 +192,12 @@ static void ledTick() {
             sLedChainNext = LedPattern::Off;
             sLedCurrent   = next;
             sLedBase      = next;
-          } else if (sBtnHeld) {
-            resumeBootHoldIfPressed();
           } else {
+            // Back to sticky base; syncLedState (same loop) picks pairing pattern.
             sBtnLedOverride = false;
+            sLedCurrent     = sLedBase;
+            sLedStep        = 0;
+            sLedAt          = now;
           }
         }
       }
@@ -502,10 +507,9 @@ static void tryStartTiVoCentral() {
 // ============================================================
 
 static void syncLedState() {
-  // BOOT hold / confirmation animations take priority over BLE state.
+  // BOOT confirmation / factory chain take priority over BLE state.
   if (sBtnLedOverride) return;
   if (sLedCurrent == LedPattern::ReadyOnce)  return;
-  if (sLedCurrent == LedPattern::ConfirmOnce) return;
 
 #if CFG_DEBUG_TIVO_ONLY
   bool bothReady = sTivoReady && sTivoBondTrusted;
@@ -945,16 +949,16 @@ static void tivoBondConfirmTick() {
 // ============================================================
 
 static void forgetTiVo() {
-  invalidateTiVoBond("user requested (BOOT 5 s)");
+  invalidateTiVoBond("user requested");
   sReconnectAt = 0;
   sTivoRetryAt = 0;
   doConnect    = false;
   sTivoSuppressReconnect = true;
   if (pClient) cleanupTivoClient();
   else sTivoSuppressReconnect = false;
-  DEV_LOGLN("[BTN] TiVo bond cleared — will scan.");
+  DEV_LOGLN("[CMD] TiVo bond cleared — will scan.");
 #if CFG_DEBUG_TIVO_ONLY
-  DEV_LOGLN("[BTN] DEBUG mode — Shield not required for scan.");
+  DEV_LOGLN("[CMD] DEBUG mode — Shield not required for scan.");
 #endif
   tryStartTiVoCentral();
 }
@@ -965,65 +969,146 @@ static void queueForgetTiVo() {
 
 static void forgetShield() {
   hidForgetShield(sBondedAddr, sHasBond);
-  DEV_LOGLN("[BTN] Shield bond cleared — re-advertising.");
+  DEV_LOGLN("[CMD] Shield bond cleared — re-advertising.");
 }
 
 static void factoryReset() {
   queueForgetTiVo();
   forgetShield();
   keymapClearCustom();
-  DEV_LOGLN("[BTN] Factory reset complete — all bonds and keymap cleared.");
+  DEV_LOGLN("[CMD] Factory reset complete — all bonds and keymap cleared.");
+}
+
+static void printCmdHelp() {
+  DEV_LOGLN("");
+  DEV_LOGLN("Commands (type letter + Enter in serial monitor):");
+  DEV_LOGLN("  t  — forget TiVo only");
+  DEV_LOGLN("  s  — forget Shield only");
+  DEV_LOGLN("  f  — factory reset (TiVo + Shield + keymap)");
+  DEV_LOGLN("  i  — status");
+  DEV_LOGLN("  h  — this help");
+  DEV_LOGLN("BOOT button (short presses, wait ~1 s after last press):");
+  DEV_LOGLN("  3 presses — forget Shield");
+  DEV_LOGLN("  4 presses — forget TiVo");
+  DEV_LOGLN("  5 presses — factory reset");
+  DEV_LOGLN("");
+}
+static void printStatus() {
+  DEV_LOGF("[STATUS] fw=%s Shield=%s TiVoReady=%d TiVoTrusted=%d hasTivoBond=%d\r\n",
+                CFG_FIRMWARE_VERSION, hidGetShieldState(),
+                sTivoReady ? 1 : 0, sTivoBondTrusted ? 1 : 0, sHasBond ? 1 : 0);
+  if (sHasBond) {
+    DEV_LOGF("[STATUS] TiVo addr=%s\r\n", sBondedAddr.toString().c_str());
+  }
+  String sh = hidGetShieldAddr();
+  if (sh.length()) {
+    DEV_LOGF("[STATUS] Shield addr=%s\r\n", sh.c_str());
+  }
+}
+
+// Serial: t/s/f/i/h (case-insensitive). Ignores CR/LF noise.
+static void serialCmdTick() {
+  while (Serial.available() > 0) {
+    int c = Serial.read();
+    if (c < 0) break;
+    if (c == '\r' || c == '\n' || c == ' ') continue;
+    char ch = (char)c;
+    if (ch >= 'A' && ch <= 'Z') ch = (char)(ch - 'A' + 'a');
+
+    switch (ch) {
+      case 'h':
+      case '?':
+        printCmdHelp();
+        break;
+      case 'i':
+        printStatus();
+        break;
+      case 't':
+        DEV_LOGLN("[CMD] Forget TiVo…");
+        queueForgetTiVo();
+        sLedBase = LedPattern::DoubleFlash;
+        ledConfirmOnce(kColTivo);
+        break;
+      case 's':
+        DEV_LOGLN("[CMD] Forget Shield…");
+        forgetShield();
+        sLedBase = LedPattern::SlowBlink;
+        ledConfirmOnce(kColShield);
+        break;
+      case 'f':
+        DEV_LOGLN("[CMD] Factory reset…");
+        factoryReset();
+        startFactoryLedSequence();
+        break;
+      default:
+        DEV_LOGF("[CMD] Unknown '%c' — type h for help\r\n", ch);
+        break;
+    }
+  }
 }
 
 // ============================================================
-// Boot button handler (non-blocking, called every loop iteration)
-// Cumulative hold thresholds: 4 s → 5 s → 8 s → 10 s
+// Boot button — short multi-press
+// 3 = Shield, 4 = TiVo, 5 = factory (commits after CFG_BTN_PRESS_GAP_MS idle)
 // ============================================================
 
+static void buttonCommitClicks(uint8_t n) {
+  if (n == CFG_BTN_CLICKS_SHIELD) {
+    DEV_LOGLN("[BTN] 3 presses — forget Shield");
+    forgetShield();
+    sLedBase = LedPattern::SlowBlink;  // pairing target after confirm
+    ledConfirmOnce(kColShield);        // 3 purple flashes → slow purple
+  } else if (n == CFG_BTN_CLICKS_TIVO) {
+    DEV_LOGLN("[BTN] 4 presses — forget TiVo");
+    queueForgetTiVo();
+    sLedBase = LedPattern::DoubleFlash;  // TiVo pairing target after confirm
+    ledConfirmOnce(kColTivo);            // 3 orange flashes → orange double-flash
+  } else if (n == CFG_BTN_CLICKS_FACTORY) {
+    DEV_LOGLN("[BTN] 5 presses — factory reset");
+    factoryReset();
+    startFactoryLedSequence();
+  } else if (n > 0) {
+    DEV_LOGF("[BTN] %u presses — ignored (need 3=Shield 4=TiVo 5=factory)\r\n", n);
+    sBtnLedOverride = false;
+  }
+}
+
 static void buttonTick() {
-  bool pressed = (digitalRead(CFG_BOOT_BTN_PIN) == LOW);
+  const bool rawDown = (digitalRead(CFG_BOOT_BTN_PIN) == LOW);
+  const unsigned long now = millis();
 
-  if (pressed) {
-    if (!sBtnHeld) {
-      sBtnAt    = millis();
-      sBtnLevel = 0;
-      sBtnHeld  = true;
-      ledForceButton(LedPattern::BootHold);
+  if (rawDown != sBtnStableDown) {
+    if (sBtnDebounceAt == 0) sBtnDebounceAt = now;
+    if (now - sBtnDebounceAt >= CFG_BTN_DEBOUNCE_MS) {
+      sBtnStableDown = rawDown;
+      sBtnDebounceAt = 0;
+
+      if (sBtnStableDown) {
+        sBtnClicks++;
+        sBtnAt = now;
+        sBtnHeld = true;
+        ledActivity();  // brief white tick per press — not a stuck rapid blink
+        DEV_LOGF("[BTN] press %u\r\n", sBtnClicks);
+        if (sBtnClicks >= CFG_BTN_CLICKS_FACTORY) {
+          uint8_t n = sBtnClicks;
+          sBtnClicks = 0;
+          sBtnHeld = false;
+          sBtnAt = 0;
+          buttonCommitClicks(n);
+        }
+      }
     }
+  } else {
+    sBtnDebounceAt = 0;
+  }
 
-    unsigned long held = millis() - sBtnAt;
-
-    if (held >= CFG_BTN_FACTORY_MS && sBtnLevel < 4) {
-      sBtnLevel = 4;
-      factoryReset();
-      startFactoryLedSequence();
-      DEV_LOGLN("[BTN] 10 s: factory reset.");
-
-    } else if (held >= CFG_BTN_SHIELD_MS && sBtnLevel < 3) {
-      sBtnLevel = 3;
-      forgetShield();
-      ledForceButton(LedPattern::DoubleFlashShield);
-      DEV_LOGLN("[BTN] 8 s: Shield bond forgotten.");
-
-    } else if (held >= CFG_BTN_TIVO_MS && sBtnLevel < 2) {
-      sBtnLevel = 2;
-      queueForgetTiVo();
-      ledConfirmOnce(kColShield);
-      DEV_LOGLN("[BTN] 5 s: TiVo bond forgotten.");
-
-    } else if (held >= CFG_BTN_WARN_MS && sBtnLevel < 1) {
-      sBtnLevel = 1;
-      ledForceButton(LedPattern::DoubleFlash);
-      DEV_LOGLN("[BTN] 4 s: warning — keep holding for TiVo clear.");
-    }
-
-  } else if (sBtnHeld) {
-    if (!sFactoryLedSeq && sLedCurrent != LedPattern::ConfirmOnce) {
-      sBtnLedOverride = false;
-    }
-    sBtnHeld  = false;
-    sBtnLevel = 0;
-    sBtnAt    = 0;
+  if (sBtnClicks > 0 && !sBtnStableDown &&
+      (now - sBtnAt) >= CFG_BTN_PRESS_GAP_MS) {
+    uint8_t n = sBtnClicks;
+    sBtnClicks = 0;
+    sBtnHeld = false;
+    sBtnAt = 0;
+    buttonCommitClicks(n);
   }
 }
 
@@ -1116,6 +1201,7 @@ void setup() {
   gDevLogReady = true;
 
   DEV_LOGF("\n=== TiVo BLE HID Translator %s ready ===\r\n", CFG_FIRMWARE_VERSION);
+  printCmdHelp();
 
 #if CFG_SHIELD_DEBUG
   hidShieldDebugLogBootReason();
@@ -1157,6 +1243,7 @@ void setup() {
 void loop() {
   // ---- LED and button (non-blocking) ----
   buttonTick();
+  serialCmdTick();
   ledTick();
 
   if (sPendingForgetTiVo) {

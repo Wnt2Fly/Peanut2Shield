@@ -311,12 +311,19 @@ static bool sShieldEverReadyThisBoot = false;
 static bool sTivoSuppressReconnect = false;
 static bool sPendingForgetTiVo = false;
 static unsigned long sScanLogAt = 0;
+static unsigned long sTivoSoftRefreshAt = 0;   // when to run soft refresh (0 = idle)
+static unsigned long sTivoLastSoftRefreshAt = 0;
+static unsigned long sTivoResubAt = 0;         // next periodic re-subscribe
+static int sTivoSubscribedReports = 0;
 
 static bool subscribeReports(NimBLERemoteService* hid);
 static void printHex(const uint8_t* data, size_t len);
 
 static void scheduleTivoRetry();
 static void releaseTivoClient(NimBLEClient* client);
+static void scheduleTivoSoftRefresh(const char* reason, unsigned long delayMs);
+static void tivoSoftRefreshTick();
+static void tivoResubscribeTick();
 
 // Solid orange during blocking BLE work so the LED does not freeze off.
 static void ledHoldForBleWork() {
@@ -380,6 +387,11 @@ static bool setupTivoHid(NimBLEClient* client) {
   if (!subscribeReports(hid)) {
     DEV_LOGLN("[Central] No reports subscribed.");
     return false;
+  }
+  if (sTivoSubscribedReports < CFG_TIVO_MIN_SUBSCRIBED_REPORTS) {
+    DEV_LOGF("[Central] Only %d report CCCD(s) — expected >= %d; will soft-refresh.\r\n",
+                  sTivoSubscribedReports, CFG_TIVO_MIN_SUBSCRIBED_REPORTS);
+    scheduleTivoSoftRefresh("incomplete HID subscribe", 2000);
   }
 
   return true;
@@ -811,22 +823,76 @@ class AdvertisedCallbacks : public NimBLEAdvertisedDeviceCallbacks {
 };
 
 // ---- Subscribe to all notifiable 2A4D characteristics ----
+// TiVo remotes expose two consumer report chars; missing one drops keys like Back.
 
 bool subscribeReports(NimBLERemoteService* hid) {
-  bool any = false;
+  int n = 0;
   auto chars = hid->getCharacteristics(true);
   for (auto& c : *chars) {
     if (!c->getUUID().equals(REPORT_CHAR)) continue;
     if (c->canNotify()) {
       if (c->subscribe(true, hidNotifyCallback)) {
-        DEV_LOGLN("[Central] Subscribed to 2A4D.");
-        any = true;
+        n++;
+        DEV_LOGF("[Central] Subscribed to 2A4D #%d.\r\n", n);
       } else {
         DEV_LOGLN("[Central] Subscribe to 2A4D failed.");
       }
     }
   }
-  return any;
+  sTivoSubscribedReports = n;
+  DEV_LOGF("[Central] Report CCCDs active: %d\r\n", n);
+  return n > 0;
+}
+
+// Soft refresh: drop TiVo central link, keep bond, reconnect + re-subscribe.
+static void scheduleTivoSoftRefresh(const char* reason, unsigned long delayMs) {
+  if (!sTivoReady || !sHasBond || !sTivoBondTrusted) return;
+  unsigned long now = millis();
+  if (sTivoLastSoftRefreshAt &&
+      (now - sTivoLastSoftRefreshAt) < CFG_TIVO_SOFT_REFRESH_COOLDOWN_MS) {
+    return;
+  }
+  if (sTivoSoftRefreshAt) return;  // already queued
+  sTivoSoftRefreshAt = now + delayMs;
+  DEV_LOGF("[Central] Soft refresh queued in %lu ms — %s\r\n", delayMs, reason);
+}
+
+static void tivoSoftRefreshTick() {
+  if (!sTivoSoftRefreshAt || millis() < sTivoSoftRefreshAt) return;
+  sTivoSoftRefreshAt = 0;
+  if (!sTivoReady || !pClient || !pClient->isConnected()) return;
+  if (!sHasBond || !sTivoBondTrusted) return;
+
+  DEV_LOGLN("[Central] Soft refresh — disconnect (bond kept), reconnect shortly.");
+  sTivoLastSoftRefreshAt = millis();
+  // Do not set sTivoSuppressReconnect — onDisconnect will schedule bond reconnect.
+  pClient->disconnect();
+}
+
+// Periodic re-subscribe while linked — repairs a dead CCCD without full disconnect.
+static void tivoResubscribeTick() {
+  if (!sTivoReady || !pClient || !pClient->isConnected()) {
+    sTivoResubAt = 0;
+    return;
+  }
+  unsigned long now = millis();
+  if (!sTivoResubAt) {
+    sTivoResubAt = now + CFG_TIVO_RESUBSCRIBE_MS;
+    return;
+  }
+  if (now < sTivoResubAt) return;
+  sTivoResubAt = now + CFG_TIVO_RESUBSCRIBE_MS;
+
+  NimBLERemoteService* hid = pClient->getService(HID_SERVICE);
+  if (!hid) {
+    scheduleTivoSoftRefresh("HID service missing on resub", 500);
+    return;
+  }
+  DEV_LOGLN("[Central] Periodic HID re-subscribe...");
+  if (!subscribeReports(hid) ||
+      sTivoSubscribedReports < CFG_TIVO_MIN_SUBSCRIBED_REPORTS) {
+    scheduleTivoSoftRefresh("resub incomplete", 1000);
+  }
 }
 
 // ---- Connect (pairing + GATT setup finish in onAuthenticationComplete) ----
@@ -887,6 +953,7 @@ static void tivoFinishSetup() {
   sTivoReady      = true;
   sTivoReadyAt    = millis();
   sTivoRetryAt    = 0;
+  sTivoResubAt    = millis() + CFG_TIVO_RESUBSCRIBE_MS;
   // Mark TiVo up before resuming advertising so Shield-down re-adv stays slow.
   hidSetTivoLinkActive(true);
   DEV_LOGF("[Central] TiVo linked — hold connection %u s to confirm bond...\r\n",
@@ -1273,12 +1340,17 @@ void loop() {
       sShieldEverReadyThisBoot = true;
       sShieldParamsAt = millis() + CFG_SHIELD_FAST_PARAMS_DELAY_MS;
       DEV_LOGLN("[HID] Shield CCCD confirmed — fast params in 1 s.");
+      // Shield (re)link stresses dual-role; refresh TiVo HID after settle.
+      scheduleTivoSoftRefresh("Shield became ready",
+                              CFG_TIVO_SOFT_REFRESH_AFTER_SHIELD_MS);
     }
-#if CFG_SHIELD_DEBUG
     if (!isReady && sWasShieldReady) {
+#if CFG_SHIELD_DEBUG
       DEV_LOGF("[HID-DBG] Shield left ready (state=%s)\r\n", hidGetShieldState());
-    }
 #endif
+      scheduleTivoSoftRefresh("Shield dropped",
+                              CFG_TIVO_SOFT_REFRESH_AFTER_SHIELD_MS);
+    }
     sWasShieldReady = isReady;
   }
 
@@ -1290,7 +1362,12 @@ void loop() {
   if (sShieldParamsAt && millis() >= sShieldParamsAt) {
     sShieldParamsAt = 0;
     hidRequestFastParams();
+    scheduleTivoSoftRefresh("after Shield fast params",
+                            CFG_TIVO_SOFT_REFRESH_AFTER_SHIELD_MS);
   }
+
+  tivoResubscribeTick();
+  tivoSoftRefreshTick();
 
   // ---- Pulse-release for translated keys and forced-release consumer keys ----
   if (sKbReleaseAt && millis() >= sKbReleaseAt) {

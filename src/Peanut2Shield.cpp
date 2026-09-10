@@ -315,6 +315,9 @@ static unsigned long sTivoSoftRefreshAt = 0;   // when to run soft refresh (0 = 
 static unsigned long sTivoLastSoftRefreshAt = 0;
 static unsigned long sTivoResubAt = 0;         // next periodic re-subscribe
 static int sTivoSubscribedReports = 0;
+// Soft refresh only after Shield has dropped mid-session — skip cold boot /
+// power-restoration first link (avoids orange double-flash stuck state).
+static bool sShieldDroppedThisBoot = false;
 
 static bool subscribeReports(NimBLERemoteService* hid);
 static void printHex(const uint8_t* data, size_t len);
@@ -1340,16 +1343,18 @@ void loop() {
       sShieldEverReadyThisBoot = true;
       sShieldParamsAt = millis() + CFG_SHIELD_FAST_PARAMS_DELAY_MS;
       DEV_LOGLN("[HID] Shield CCCD confirmed — fast params in 1 s.");
-      // Shield (re)link stresses dual-role; refresh TiVo HID after settle.
-      scheduleTivoSoftRefresh("Shield became ready",
-                              CFG_TIVO_SOFT_REFRESH_AFTER_SHIELD_MS);
+      // Mid-session re-ready only — cold boot / power restore must not soft-refresh.
+      if (sShieldDroppedThisBoot) {
+        scheduleTivoSoftRefresh("Shield re-ready after drop",
+                                CFG_TIVO_SOFT_REFRESH_AFTER_SHIELD_MS);
+      }
     }
     if (!isReady && sWasShieldReady) {
+      sShieldDroppedThisBoot = true;
 #if CFG_SHIELD_DEBUG
       DEV_LOGF("[HID-DBG] Shield left ready (state=%s)\r\n", hidGetShieldState());
 #endif
-      scheduleTivoSoftRefresh("Shield dropped",
-                              CFG_TIVO_SOFT_REFRESH_AFTER_SHIELD_MS);
+      // Don't soft-refresh on the drop itself — wait until Shield is back, then refresh.
     }
     sWasShieldReady = isReady;
   }
@@ -1362,8 +1367,17 @@ void loop() {
   if (sShieldParamsAt && millis() >= sShieldParamsAt) {
     sShieldParamsAt = 0;
     hidRequestFastParams();
-    scheduleTivoSoftRefresh("after Shield fast params",
-                            CFG_TIVO_SOFT_REFRESH_AFTER_SHIELD_MS);
+    if (sShieldDroppedThisBoot) {
+      scheduleTivoSoftRefresh("after Shield fast params (post-drop)",
+                              CFG_TIVO_SOFT_REFRESH_AFTER_SHIELD_MS);
+    }
+  }
+
+  // Heal: BLE link up + trusted bond but ready flag cleared (power-race leftover).
+  if (!sTivoReady && sTivoBondTrusted && pClient && pClient->isConnected() &&
+      !sTivoConnecting && !sTivoPendingSecure && !sTivoNeedSetup) {
+    DEV_LOGLN("[Central] Heal — TiVo connected/trusted but not ready; re-running HID setup.");
+    sTivoNeedSetup = true;
   }
 
   tivoResubscribeTick();

@@ -13,7 +13,7 @@
 #define CFG_BLE_DEVICE_NAME  "Peanut2Shield"
 
 // Firmware version (serial banner, README, USB kit VERSION.txt)
-#define CFG_FIRMWARE_VERSION  "v1.17"
+#define CFG_FIRMWARE_VERSION  "v1.18"
 
 // BLE appearance value advertised to Android TV.
 // 0x0180 = Generic Remote Control - avoids the PIN-entry flow triggered by
@@ -100,8 +100,10 @@
 // Soft TiVo refresh: disconnect+reconnect keeping the bond (no forget / re-pair).
 // Dual-role radio contention with the Shield can leave the TiVo link "up" while
 // some HID report CCCDs stop delivering (e.g. Back). Rebuild the central session.
+// Only after a mid-session Shield drop — NOT on cold boot / power restoration
+// (that race left orange double-flash with a working remote until RESET).
 #define CFG_TIVO_SOFT_REFRESH_COOLDOWN_MS     120000  // min gap between soft refreshes
-#define CFG_TIVO_SOFT_REFRESH_AFTER_SHIELD_MS   4000  // after Shield drop or CCCD ready
+#define CFG_TIVO_SOFT_REFRESH_AFTER_SHIELD_MS   4000  // after mid-session Shield re-ready
 #define CFG_TIVO_RESUBSCRIBE_MS               300000  // re-CCCD notify while linked (5 min)
 #define CFG_TIVO_MIN_SUBSCRIBED_REPORTS            2  // TiVo has two consumer 2A4D chars
 

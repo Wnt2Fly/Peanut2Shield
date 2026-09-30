@@ -1,6 +1,6 @@
 # Peanut2Shield — TiVo Remote BLE HID Translator
 
-**Firmware v1.09**
+**Firmware v1.18** — see [CHANGELOG.md](CHANGELOG.md)
 
 An ESP32-S3 firmware that bridges a **TiVo Stream 4K remote** to an **Nvidia Shield TV** over Bluetooth LE — no WiFi, no app, no cloud.
 
@@ -26,7 +26,7 @@ The ESP32-S3 simultaneously acts as:
 
 When a button is pressed on the TiVo remote, the firmware translates it (if needed) and forwards it to the Shield in real time.  Shield and TiVo bond addresses are stored in **NVS**; BLE keys persist across reboot when NimBLE bonding is enabled. After a normal reset or power cycle, the bridge **reconnects to both devices automatically** — Shield first (while advertising), then TiVo — and returns to **steady green** when both links are up.
 
-**Updating firmware:** use [PlatformIO](#building--flashing) (`pio run --target upload`).
+**Updating firmware:** use [PlatformIO](#building--flashing) (`pio run --target upload`). The first boot after flashing a **new version** clears pairing once — re-pair the Shield and TiVo remote. Re-flashing the same version keeps pairing.
 
 ---
 
@@ -36,7 +36,7 @@ When a button is pressed on the TiVo remote, the firmware translates it (if need
 |------|--------|
 | MCU | [Waveshare ESP32-S3-Zero](https://www.waveshare.com/esp32-s3-zero.htm) (chip **ESP32-S3FH4R2** — 4 MB flash, **2 MB PSRAM required**) |
 | LED | WS2812 RGB on GPIO 21 — colour-coded by connection state (see LED patterns below) |
-| Boot button | GPIO 0 — hold to manage bonds (see below) |
+| Boot button | GPIO 0 — short presses to manage bonds (see [Reset / forget bonds](#reset--forget-bonds)) |
 | Power | USB-C — wall USB adapter preferred (see [Power](#power); avoid Shield USB data cable) |
 
 ---
@@ -81,15 +81,13 @@ The Shield also has no practical setting to “ignore COM / USB serial gadgets�
 | Yellow | Steady | Boot — BLE stack initialising (~1–2 s after reset). |
 | Purple | Slow blink (500 ms on/off) | **Pair / wait for Shield** — advertising, or Shield connected and finishing setup |
 | Purple | **Solid** (not blinking) | **Stuck** — often USB host hang (Shield USB or PC USB with no monitor). Use wall power; see [Troubleshooting](#troubleshooting). |
-| Deep orange | Double-flash … pause … repeat | **Pair the TiVo remote** — Shield ready, scanning for TiVo; also BOOT 4 s warning |
-| Green | 3 quick flashes (once), then **steady on** | Both devices ready — stays green while paired |
-| White | Single 80 ms flash | Button press forwarded to Shield |
-| Yellow | Fast blink (250 ms on/off) | BOOT held — counting toward 4/5/8/10 s |
-| Purple | 3 quick flashes (once) | TiVo bond cleared (BOOT 5 s) |
-| Purple | Double-flash … pause … repeat | Shield bond cleared (BOOT 8 s) |
-| Red | 3 quick flashes (once) | Factory reset starting (BOOT 10 s) |
+| Deep orange | Double-flash … pause … repeat | **Pair the TiVo remote** — Shield ready, scanning for TiVo |
+| Green | 3 quick flashes (once), then **steady on** (half brightness) | Both devices ready — stays green while paired |
+| White | Single 80 ms flash | Button press forwarded to Shield; also a tick on each BOOT press |
+| Purple | 3 quick flashes (once) → slow blink | Shield bond cleared (BOOT **3** presses / serial `s`) — pair from Shield |
+| Deep orange | 3 quick flashes (once) → double-flash | TiVo bond cleared (BOOT **4** presses / serial `t`) — pair the remote |
+| Red → green | 3 red flashes, 3 green flashes → purple slow blink | Factory reset (BOOT **5** presses / serial `f`) |
 | Red | Slow blink (400 ms on/off) | **Wrong hardware** — no PSRAM detected; needs genuine Waveshare FH4R2 board |
-| Green | 3 quick flashes (once) | Factory reset confirm → then slow blink |
 
 > **Stuck on yellow?** Steady yellow for more than ~5 s usually means a **crash reboot loop** (BLE failed to start), not pairing mode.  
 > **Stuck on solid purple?** Firmware hung after start (often Shield/PC USB serial) — use a **wall adapter**, not Shield USB. See [Troubleshooting](#troubleshooting).
@@ -124,7 +122,11 @@ Press **BOOT** several times, then wait ~1 second (no more presses):
 
 (1–2 presses do nothing.) Serial commands still work the same.
 
-After factory reset: purple blink → pair Shield, then orange → pair TiVo, then green.
+The reset itself takes well under a second. After the confirmation flashes the LED goes straight to the right pairing pattern — **no extra BOOT press is needed**:
+
+- **3 presses** → 3 purple flashes → purple slow blink → pair from Shield **Settings → Remote & Accessories**.
+- **4 presses** → 3 orange flashes → orange double-flash → put the TiVo remote in pairing mode. The Shield stays paired.
+- **5 presses** → red, then green flashes → purple slow blink → pair Shield, then orange → pair TiVo, then green.
 
 ---
 
@@ -266,9 +268,9 @@ The bridge is already scanning. Put the **TiVo Stream 4K** remote in BLE pairing
 
 | What to re-pair | Method | LED after |
 |-----------------|--------|-----------|
-| Both | Serial **f**, or BOOT **5** presses | Red flash → green flash → slow blink |
-| TiVo remote | Serial **t**, or BOOT **4** presses | Purple quick flash → orange; reset remote then any button |
-| Shield | Serial **s**, or BOOT **3** presses | Purple double-flash → slow blink |
+| Both | Serial **f**, or BOOT **5** presses | Red flashes → green flashes → purple slow blink |
+| TiVo remote | Serial **t**, or BOOT **4** presses | Orange quick flashes → orange double-flash; reset remote then any button |
+| Shield | Serial **s**, or BOOT **3** presses | Purple quick flashes → purple slow blink |
 
 ### After reboot
 
@@ -276,15 +278,17 @@ If both devices were paired before, you do **not** need to open Shield settings 
 
 Power from a **wall USB adapter** (not Shield USB with a data cable). See [Power](#power).
 
-1. Power on or press **RESET** — brief **yellow**, then **purple slow blink** while the Shield reconnects (up to ~8 s if the Shield was asleep).
-2. TiVo reconnects automatically once the Shield window finishes (or sooner if Shield is already linked).
+1. Power on or press **RESET** — brief **yellow**, then **purple slow blink** while the Shield reconnects (the bridge waits up to ~30 s for a sleeping Shield).
+2. TiVo reconnects automatically once the Shield is linked (or after the 30 s window if the Shield stays asleep).
 3. **Steady green** = both ready; white flash on button press = keys reaching the Shield.
+
+**Power outage:** both units should come back to steady green on their own (fixed in v1.18). If one is still on **orange double-flash** after a minute while the remote works, press **RESET** once.
 
 If the LED is **solid purple** (not blinking), the board is hung on USB serial — move to wall power or a charge-only cable.
 
-If you see **white flashes** but the Shield does not respond, the TiVo link is up but the Shield is not — wait a few seconds, wake the Shield, or hold **BOOT 8 s** to re-pair the Shield side only.
+If you see **white flashes** but the Shield does not respond, the TiVo link is up but the Shield is not — wait a few seconds, wake the Shield, or press **BOOT 3 times** to re-pair the Shield side only.
 
-**Shield powered off while TiVo stays paired:** the bridge keeps the TiVo link when possible and uses **slow advertising** so re-advertising for the Shield does not starve the remote. When the Shield comes back, it should reconnect without forcing a TiVo re-pair. If the remote went to sleep, press any button once to wake it.
+**Shield powered off while TiVo stays paired:** the bridge keeps the TiVo link when possible and uses **slow advertising** so re-advertising for the Shield does not starve the remote. When the Shield comes back, the bridge reconnects the TiVo remote once using the saved bond (a brief orange blip) to refresh its button channels — no re-pair needed. If the remote went to sleep, press any button once to wake it.
 
 ---
 
@@ -351,7 +355,7 @@ pio device monitor -p COM20 -b 115200
 Good boot on serial:
 
 ```
-=== TiVo BLE HID Translator v1.02 ===
+=== TiVo BLE HID Translator v1.18 ready ===
 [BOOT] flash=4096 KB  PSRAM=2048 KB  heap=...
 [HID] Peripheral ready — advertising as 'Peanut2Shield'.
 ```
@@ -369,7 +373,7 @@ On PC USB power, expect brief **yellow**, then **purple slow blink** if nothing 
 | Yellow **~1–2 s**, then purple **blink** | Normal boot | Pair Shield if new; ignore if already green behind TV |
 | Yellow **forever** or keeps restarting | BLE crash loop (`ESP_ERR_NO_MEM` on serial) | **`flash-recover.bat COM<N>`** or `pio run -t erase` then upload |
 | **Solid purple** (not blinking) after power cycle | USB host enumerated serial but nothing reads it (Shield USB / PC without monitor) | Power from a **wall USB adapter**; avoid Shield USB. Optional: charge-only cable if you must use Shield power |
-| **Fast** yellow blink | BOOT button held or stuck | Release BOOT; check case isn’t pressing the button |
+| Resets or forgets bonds by itself | BOOT button stuck or case pressing it | Check the case isn’t pressing BOOT |
 | **Red** slow blink | No PSRAM on chip | Wrong board — need **Waveshare ESP32-S3-Zero (FH4R2)** with 2 MB PSRAM |
 
 ### Serial shows `ESP_ERR_NO_MEM` or `Config struct mismatch`
@@ -382,7 +386,7 @@ Fix:
 2. **`flash-recover.bat COM<N>`** (or `pio run -t erase` then upload).
 3. Press **RESET** once; expect **purple slow blink** within a few seconds. Re-pair Shield and TiVo.
 
-**v1.03+** also clears incompatible NVS on first boot after a firmware version change (re-pair once).
+The firmware also clears NVS on first boot after any firmware version change (re-pair once).
 
 ### Upload / flash errors
 
@@ -394,13 +398,22 @@ Fix:
 
 ### White flashes but Shield ignores buttons
 
-TiVo is connected but Shield is not. Wait ~10 s after reboot (v1.02 reconnect window), wake the Shield, or hold **BOOT 8 s** to re-pair Shield only.
+TiVo is connected but Shield is not. Wait up to ~30 s after reboot, wake the Shield, or press **BOOT 3 times** to re-pair Shield only.
+
+### Some buttons (e.g. Back) stop working, no white flash
+
+The TiVo link is up but one of its report channels stopped delivering. v1.17+ repairs this automatically (reconnects the remote with its saved bond after Shield events, and re-subscribes every 5 minutes). If it still happens, press **BOOT 4 times** and re-pair that remote, and check its batteries.
+
+### Orange double-flash after a power outage, remote still works
+
+Fixed in v1.18. On older firmware, press **RESET** once.
 
 ---
 
 ## Project structure
 
 ```
+├── CHANGELOG.md                # Version history
 ├── LICENSE                     # MIT license
 ├── flash-recover.bat           # Windows: erase + upload (recover crash loop)
 ├── sdkconfig.defaults          # PSRAM / BLE memory settings for ESP32-S3-Zero
@@ -441,13 +454,14 @@ Platform: `espressif32`, framework: `arduino`, board: `esp32-s3-devkitc-1` with 
 
 - **PSRAM required** — Dual BLE (central + peripheral) needs the **2 MB PSRAM** on the ESP32-S3FH4R2. At boot the firmware logs `[BOOT] PSRAM=… KB`; values under ~512 KB halt with a red blink.
 - **Dual BLE roles** — NimBLE-Arduino runs Central and Peripheral simultaneously on the single radio via time-slicing.
-- **Connection intervals** — Both links target 7.5–15 ms (`minInterval=6, maxInterval=12` in BLE units). The Shield parameter update fires 1 s after CCCD write to avoid disrupting Android's service-discovery sequence.
+- **Connection intervals** — Shield link targets 7.5–15 ms (`CFG_CONN_*`, 510 ms supervision); the update fires 1 s after CCCD write to avoid disrupting Android's service discovery. TiVo link uses 15–30 ms with a 4 s supervision timeout (`CFG_TIVO_CONN_*`) so the remote doesn't drop.
 - **Key-release pulse** — Keyboard-translated buttons get a forced 30 ms key-up (`CFG_KB_PULSE_MS`) so the Shield doesn't auto-repeat them on hold.
 - **Bounce guard** — `CFG_BOUNCE_GUARD_ACTION_MS` suppresses the same usage code arriving too soon after key-up (currently **0 ms**, disabled).  Increase if action buttons double-fire.  Nav keys always skip it.
 - **Nav key fast-path** — Navigation keys (0x0042–0x0045) skip the bounce guard and release immediately on all-zero idle reports instead of waiting for the 50 ms all-zero guard (`CFG_ALL_ZERO_GUARD_MS`).  Identical-report hold dedup still applies to all keys.
 - **Power / volume over BLE** — By default Power (`CFG_IGNORE_TIVO_POWER_BLE=1`) and Vol+/Vol−/Mute (`CFG_IGNORE_TIVO_VOLUME_BLE=1`) are **not** forwarded to the Shield (use TiVo IR). Set either flag to `0` to restore BLE pass-through for that group. If Power is forwarded, it uses a forced 30 ms release pulse.
 - **NVS namespaces** — `tivo` (address + `trusted` after 5 s link), `shield` (address after CCCD), `keymap` (custom remaps — storage only; no runtime UI yet). NimBLE bond keys use `CONFIG_BT_NIMBLE_NVS_PERSIST` in `platformio.ini`.
-- **Boot reconnect** — On power-up with both bonds stored, TiVo central reconnect is deferred for `CFG_SHIELD_RECONNECT_BOOT_MS` (8 s) so the Shield can reconnect while peripheral advertising is still running. TiVo connect pauses advertising briefly; once TiVo HID setup finishes, advertising resumes if the Shield is not yet linked. Tune the delay in `config.h` if your Shield needs more time after wake.
+- **Boot reconnect** — On power-up with both bonds stored, TiVo central reconnect waits for the Shield to link, or up to `CFG_SHIELD_RECONNECT_BOOT_MS` (30 s) if it stays asleep. Advertising keeps running (slow intervals) while the Shield is not linked so it can always find the bridge.
+- **TiVo link refresh** — After a mid-session Shield drop and reconnect, the TiVo link is soft-refreshed: disconnected and reconnected with the saved bond (`CFG_TIVO_SOFT_REFRESH_*`, 2 min cooldown). Not done on cold boot / power restore. While linked, all TiVo report CCCDs are re-subscribed every `CFG_TIVO_RESUBSCRIBE_MS` (5 min); fewer than `CFG_TIVO_MIN_SUBSCRIBED_REPORTS` (2) triggers a soft refresh.
 - **Shield drop while TiVo linked** — After a mid-session Shield disconnect, peripheral advertising uses slow intervals (`CFG_ADV_SLOW_MIN_INTERVAL` / `CFG_ADV_SLOW_MAX_INTERVAL`, 100–300 ms) while the TiVo central link is still up, so fast 20–40 ms re-advertise does not starve the remote. When TiVo also drops, advertising returns to the fast pairing intervals.
 - **LED** — Non-blocking state machine driven by `ledTick()` in `loop()`. Priority: Activity (white) > base pattern. Purple slow blink = Shield pairing; deep orange double-flash = TiVo pairing; green = ready. Global brightness controlled by `CFG_LED_BRIGHTNESS` in `config.h`.
 - **Shield dropout debug** — `CFG_SHIELD_DEBUG=1` in `config.h` logs `[HID-DBG]` on connect/disconnect (uptime, conn interval, supervision timeout, advertising state), TiVo central pause/resume, fast-params timing, 30 s heartbeat, and ESP reset reason at boot. Set `CFG_SHIELD_DEBUG` to `0` to silence.

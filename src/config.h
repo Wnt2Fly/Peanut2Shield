@@ -13,7 +13,7 @@
 #define CFG_BLE_DEVICE_NAME  "Peanut2Shield"
 
 // Firmware version (serial banner, README, firmware/ image names)
-#define CFG_FIRMWARE_VERSION  "v1.20"
+#define CFG_FIRMWARE_VERSION  "v1.21"
 
 // BLE appearance value advertised to Android TV.
 // 0x0180 = Generic Remote Control - avoids the PIN-entry flow triggered by
@@ -160,6 +160,10 @@
 // releasing on the Shield. The TiVo briefly reports up→down at the start of a
 // hold; if the same key comes back within this window the hold continues.
 #define CFG_LONG_PRESS_RELEASE_MS  120
+
+// Long-press mode only: a held key is always released on the Shield after this
+// long, even if the remote's key-up is lost. Long-press actions fire well before.
+#define CFG_LONG_PRESS_MAX_HOLD_MS  3000
 
 // -----------------------------------------------------------------------------
 // Duplicate / bounce suppression

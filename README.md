@@ -1,6 +1,6 @@
 # Peanut2Shield — TiVo Remote BLE HID Translator
 
-**Firmware v1.20** — see [CHANGELOG.md](CHANGELOG.md)
+**Firmware v1.21** — see [CHANGELOG.md](CHANGELOG.md)
 
 An ESP32-S3 firmware that bridges a **TiVo Stream 4K remote** to an **Nvidia Shield TV** over Bluetooth LE — no WiFi, no app, no cloud.
 
@@ -162,7 +162,7 @@ To enable long-press, flash the **`longpress`** prebuilt file (see [Flash from y
 #define CFG_LONG_PRESS  1
 ```
 
-With it on, buttons stay held on the Shield for as long as you hold them on the remote, and **Back** is sent as a real Android Back key instead of Esc. F-keys and Home still send a short tap (Button Mapper single-tap mappings are unaffected). Leave it at `0` if you don't use long-press — behaviour is then identical to earlier versions.
+With it on, buttons stay held on the Shield for as long as you hold them on the remote (up to 3 seconds), and **Back** is sent as a real Android Back key instead of Esc. F-keys and Home still send a short tap (Button Mapper single-tap mappings are unaffected). Leave it at `0` if you don't use long-press — behaviour is then identical to earlier versions.
 
 **Power**, **Volume**, and **Mute** are ignored over BLE by default so they do not fight the TiVo remote’s IR (or CEC). See **[Power & volume via TiVo remote IR](#power--volume-via-tivo-remote-ir)** below. For **Input** or other IR-only keys, program IR on the remote the same way.
 
@@ -339,8 +339,8 @@ Prebuilt files are in the [`firmware/`](firmware/) folder. Each is a complete im
 
 | File | Use it if |
 |------|-----------|
-| `Peanut2Shield-v1.20-standard.bin` | Normal use — every press is a short tap (same as earlier versions) |
-| `Peanut2Shield-v1.20-longpress.bin` | You use long-press in apps like TiviMate (hold Back / hold OK) — see [Long-press](#long-press-tivimate-etc) |
+| `Peanut2Shield-v1.21-standard.bin` | Normal use — every press is a short tap (same as earlier versions) |
+| `Peanut2Shield-v1.21-longpress.bin` | You use long-press in apps like TiviMate (hold Back / hold OK) — see [Long-press](#long-press-tivimate-etc) |
 
 Works on **Windows, Mac, or Linux** with **Chrome** or **Edge** (Safari and Firefox can't talk to USB serial devices):
 
@@ -354,7 +354,7 @@ Works on **Windows, Mac, or Linux** with **Chrome** or **Edge** (Safari and Fire
 
 If **Connect** doesn't find the board: hold the **BOOT** button while plugging the board in, release it, then click **Connect** again.
 
-From a terminal instead of the browser: `esptool.py --chip esp32s3 write_flash 0x0 Peanut2Shield-v1.20-standard.bin`
+From a terminal instead of the browser: `esptool.py --chip esp32s3 write_flash 0x0 Peanut2Shield-v1.21-standard.bin`
 
 > Flashing a prebuilt file always clears pairing, even if it's the same version — the image overwrites the area where pairing is stored.
 
@@ -396,7 +396,7 @@ pio device monitor -p COM20 -b 115200
 Good boot on serial:
 
 ```
-=== TiVo BLE HID Translator v1.20 ready ===
+=== TiVo BLE HID Translator v1.21 ready ===
 [BOOT] flash=4096 KB  PSRAM=2048 KB  heap=...
 [HID] Peripheral ready — advertising as 'Peanut2Shield'.
 ```
@@ -467,8 +467,8 @@ The bridge lost track of a TiVo connection that was still alive. Fixed for power
 ├── flash-recover.bat           # Windows: erase + upload (recover crash loop)
 ├── make-release.ps1            # Rebuild the prebuilt images in firmware/
 ├── firmware/
-│   ├── Peanut2Shield-v1.20-standard.bin    # Prebuilt, flash at 0x0 (browser)
-│   └── Peanut2Shield-v1.20-longpress.bin   # Same, with long-press on
+│   ├── Peanut2Shield-v1.21-standard.bin    # Prebuilt, flash at 0x0 (browser)
+│   └── Peanut2Shield-v1.21-longpress.bin   # Same, with long-press on
 ├── sdkconfig.defaults          # PSRAM / BLE memory settings for ESP32-S3-Zero
 ├── tivo_programming_codes.txt  # TiVo IR codes (power, vol, input, AV) if CEC fails
 ├── platformio.ini              # Board, platform, library dependencies

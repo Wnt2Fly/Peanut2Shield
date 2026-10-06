@@ -7,6 +7,15 @@ The firmware version lives in `CFG_FIRMWARE_VERSION` in `src/config.h`.
 
 ---
 
+## v1.21 — 2026-10-06
+
+### Fixed
+- **Long-press mode: every tap acted like a hold.** A tap on OK opened TiviMate's side menu, a single Back gave the guide with a black picture, and Back sometimes did nothing. Key releases were sent from the main loop, so whenever the loop stalled the button stayed down on the Shield. Releases now run from their own timer and no longer depend on the main loop. This applies to both builds: the Esc/F-key/Home short taps now use the timer too.
+- **LED freezing on solid white/purple and no longer flashing on button presses.** The Bluetooth callback and the main loop could both drive the LED at the same moment. Only the main loop writes to the LED now; button presses just request a flash.
+
+### Added
+- **Safety release in long-press mode** (`CFG_LONG_PRESS_MAX_HOLD_MS`, 3 s): a held key is always released on the Shield after 3 s, even if the remote's key-up is lost.
+
 ## v1.20 — 2026-10-06
 
 ### Added

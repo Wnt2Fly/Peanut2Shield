@@ -129,16 +129,24 @@ static void startFactoryLedSequence() {
 }
 
 // Single activity flash (highest priority). Returns to base when done.
-// Safe to call from BLE callback context.
+// Only sets a request: ledTick() does the write, so the BLE callback and the
+// main loop never drive the NeoPixel at the same time.
+static volatile bool sLedActivityReq = false;
+
 static void ledActivity() {
-  sLedCurrent = LedPattern::Activity;
-  sLedAt      = millis();
-  ledWrite(kColActivity);
+  sLedActivityReq = true;
 }
 
 // Advance the LED state machine — must be called every loop() iteration.
 static void ledTick() {
   unsigned long now = millis();
+  if (sLedActivityReq) {
+    sLedActivityReq = false;
+    sLedCurrent     = LedPattern::Activity;
+    sLedAt          = now;
+    ledWrite(kColActivity);
+    return;
+  }
   unsigned long age = now - sLedAt;
 
   switch (sLedCurrent) {
@@ -613,10 +621,6 @@ static uint8_t       sLastData[20];
 static size_t        sLastLen        = 0;
 static bool          sKeyIsDown      = false;
 static unsigned long sKeyDownAt      = 0;
-static unsigned long sKbReleaseAt    = 0;
-#if CFG_LONG_PRESS
-static unsigned long sLpReleaseAt    = 0;   // deferred consumer release (0 = none)
-#endif
 static unsigned long sShieldParamsAt = 0;
 static bool          sWasShieldReady = false;
 
@@ -626,6 +630,66 @@ static bool          sWasShieldReady = false;
 //   absorbing the TiVo's rapid keydown→keyup→keydown auto-repeat initiation.
 static constexpr unsigned long kAllZeroGuardMs = CFG_ALL_ZERO_GUARD_MS;
 static constexpr unsigned long kBounceGuardMs  = CFG_BOUNCE_GUARD_ACTION_MS;
+
+// Key releases run from esp_timer callbacks, not loop(), so a slow or blocked
+// main loop can never leave a key held down on the Shield.
+static esp_timer_handle_t sKbPulseTimer = nullptr;
+
+static void kbPulseReleaseCb(void* /*arg*/) {
+  hidReleaseKeyboard();
+  hidReleaseConsumer();  // no-op when consumer is already at zero
+}
+
+static void schedulePulseRelease() {
+  esp_timer_stop(sKbPulseTimer);
+  esp_timer_start_once(sKbPulseTimer, (uint64_t)CFG_KB_PULSE_MS * 1000);
+}
+
+#if CFG_LONG_PRESS
+// Held consumer key: timer armed for CFG_LONG_PRESS_MAX_HOLD_MS while held,
+// re-armed for CFG_LONG_PRESS_RELEASE_MS once the remote reports key-up.
+static esp_timer_handle_t sLpTimer     = nullptr;
+static volatile bool      sLpHolding   = false;  // held key is down on the Shield
+static volatile bool      sLpUpPending = false;  // remote reported up; release due
+
+static void lpReleaseCb(void* /*arg*/) {
+  sLpHolding   = false;
+  sLpUpPending = false;
+  hidReleaseConsumer();
+}
+
+static void lpArm(uint32_t ms) {
+  esp_timer_stop(sLpTimer);
+  esp_timer_start_once(sLpTimer, (uint64_t)ms * 1000);
+}
+
+static void lpDisarm() {
+  esp_timer_stop(sLpTimer);
+  sLpHolding   = false;
+  sLpUpPending = false;
+}
+#endif
+
+static void keyReleaseTimersInit() {
+  const esp_timer_create_args_t kb = {
+      .callback = &kbPulseReleaseCb,
+      .arg      = nullptr,
+      .dispatch_method = ESP_TIMER_TASK,
+      .name     = "kb_release",
+      .skip_unhandled_events = false,
+  };
+  esp_timer_create(&kb, &sKbPulseTimer);
+#if CFG_LONG_PRESS
+  const esp_timer_create_args_t lp = {
+      .callback = &lpReleaseCb,
+      .arg      = nullptr,
+      .dispatch_method = ESP_TIMER_TASK,
+      .name     = "lp_release",
+      .skip_unhandled_events = false,
+  };
+  esp_timer_create(&lp, &sLpTimer);
+#endif
+}
 
 void hidNotifyCallback(
     NimBLERemoteCharacteristic* pChar,
@@ -644,9 +708,12 @@ void hidNotifyCallback(
       if (lastWasNav || millis() - sKeyDownAt >= kAllZeroGuardMs) {
         sKeyIsDown = false;
 #if CFG_LONG_PRESS
-        if (!lastWasNav) {
-          // Held keys: absorb the TiVo's up→down blip so the Shield sees one hold.
-          if (!sLpReleaseAt) sLpReleaseAt = millis() + CFG_LONG_PRESS_RELEASE_MS;
+        if (sLpHolding) {
+          // Absorb the TiVo's up→down blip so the Shield sees one continuous hold.
+          if (!sLpUpPending) {
+            sLpUpPending = true;
+            lpArm(CFG_LONG_PRESS_RELEASE_MS);
+          }
           return;
         }
 #endif
@@ -659,16 +726,17 @@ void hidNotifyCallback(
   unsigned long now = millis();
 
 #if CFG_LONG_PRESS
-  if (sLpReleaseAt) {
+  if (sLpUpPending) {
     if (length == sLastLen && memcmp(pData, sLastData, length) == 0) {
       // Same key back down inside the release window — hold continues.
-      sLpReleaseAt = 0;
+      sLpUpPending = false;
       sKeyIsDown   = true;
       sKeyDownAt   = now;
+      lpArm(CFG_LONG_PRESS_MAX_HOLD_MS);
       return;
     }
     // Different key: its report replaces the held one on the Shield.
-    sLpReleaseAt = 0;
+    lpDisarm();
   }
 #endif
 
@@ -726,9 +794,12 @@ void hidNotifyCallback(
 #endif
   // Keyboard translations: forced CFG_KB_PULSE_MS pulse so Shield never sees a held key.
   // Consumer pass-throughs: natural timing — TiVo key-up fires hidReleaseConsumer().
+#if CFG_LONG_PRESS
+  if (sLpHolding) lpDisarm();  // new key replaces any held one
+#endif
   if (length == 8) {
     hidSendKeyboardRaw(pData);
-    sKbReleaseAt = millis() + CFG_KB_PULSE_MS;
+    schedulePulseRelease();
   } else if (length >= 2) {
     uint16_t usage = pData[0] | (pData[1] << 8);
 #if CFG_IGNORE_TIVO_POWER_BLE
@@ -750,13 +821,20 @@ void hidNotifyCallback(
     keymapLookupConsumer(usage, outType, outCode);
     if (outType == OutputType::Keyboard) {
       hidSendKeyboard(0x00, (uint8_t)outCode);
-      sKbReleaseAt = millis() + CFG_KB_PULSE_MS;
+      schedulePulseRelease();
     } else if (usage == 0x0030) {
       // Power key: send as consumer but force a timed release (don't rely on TiVo key-up)
       hidSendConsumer(outCode);
-      sKbReleaseAt = millis() + CFG_KB_PULSE_MS;
+      schedulePulseRelease();
     } else {
       hidSendConsumer(outCode);
+#if CFG_LONG_PRESS
+      if (!isNavKey) {
+        sLpHolding   = true;
+        sLpUpPending = false;
+        lpArm(CFG_LONG_PRESS_MAX_HOLD_MS);  // safety cap if key-up is missed
+      }
+#endif
     }
   }
 
@@ -1303,6 +1381,7 @@ void setup() {
   NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
   NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
 
+  keyReleaseTimersInit();
   hidPeripheralInit();
   keymapInit();
 
@@ -1426,20 +1505,6 @@ void loop() {
 
   tivoResubscribeTick();
   tivoSoftRefreshTick();
-
-  // ---- Pulse-release for translated keys and forced-release consumer keys ----
-  if (sKbReleaseAt && millis() >= sKbReleaseAt) {
-    sKbReleaseAt = 0;
-    hidReleaseKeyboard();
-    hidReleaseConsumer();  // no-op when consumer is already at zero
-  }
-
-#if CFG_LONG_PRESS
-  if (sLpReleaseAt && millis() >= sLpReleaseAt) {
-    sLpReleaseAt = 0;
-    hidReleaseConsumer();
-  }
-#endif
 
   // ---- Timed reconnect after TiVo disconnect ----
   if (sReconnectAt && millis() >= sReconnectAt) {

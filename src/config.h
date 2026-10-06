@@ -12,8 +12,8 @@
 // Name broadcast by the ESP32 over BLE (visible during Shield pairing scan)
 #define CFG_BLE_DEVICE_NAME  "Peanut2Shield"
 
-// Firmware version (serial banner, README, USB kit VERSION.txt)
-#define CFG_FIRMWARE_VERSION  "v1.18"
+// Firmware version (serial banner, README, firmware/ image names)
+#define CFG_FIRMWARE_VERSION  "v1.20"
 
 // BLE appearance value advertised to Android TV.
 // 0x0180 = Generic Remote Control - avoids the PIN-entry flow triggered by
@@ -143,6 +143,25 @@
 #define CFG_IGNORE_TIVO_VOLUME_BLE  1
 
 // -----------------------------------------------------------------------------
+// Long-press pass-through
+// 0 (default): every TiVo press reaches the Shield as a short tap. Back is sent
+//   as keyboard Esc with a forced 30 ms release, so holding a button never
+//   triggers a long-press action on the Shield.
+// 1: buttons stay held on the Shield for as long as they are held on the remote,
+//   so apps like TiviMate see long-presses (long Back, long OK). Back is sent as
+//   Android Back (consumer AC Back 0x0224) instead of Esc. F-keys and Home keep
+//   the short tap. Reflash after changing.
+// -----------------------------------------------------------------------------
+#ifndef CFG_LONG_PRESS
+#define CFG_LONG_PRESS  0
+#endif
+
+// Long-press mode only: wait this long after the remote reports key-up before
+// releasing on the Shield. The TiVo briefly reports up→down at the start of a
+// hold; if the same key comes back within this window the hold continues.
+#define CFG_LONG_PRESS_RELEASE_MS  120
+
+// -----------------------------------------------------------------------------
 // Duplicate / bounce suppression
 // The TiVo remote has two 4-byte consumer characteristics (IDs 0x0C and 0x10).
 // When one fires a keydown the other simultaneously fires all-zeros (idle value).
@@ -263,7 +282,15 @@
   X(0x01C8, Keyboard, 0x44)    /* Netflix       -> KEY F11           */ \
   X(0x0223, Keyboard, 0x4A)    /* Home          -> KEY Home          */ \
   X(0x0041, Consumer, 0x0041)  /* OK / Select   -> CSM pass-through  */ \
+  CFG_KEYMAP_BACK(X)
+
+#if CFG_LONG_PRESS
+#define CFG_KEYMAP_BACK(X) \
+  X(0x0224, Consumer, 0x0224)  /* Back          -> AC Back (holdable) */
+#else
+#define CFG_KEYMAP_BACK(X) \
   X(0x0224, Keyboard, 0x29)    /* Back          -> ESC               */
+#endif
 
 // Compatibility aliases
 #define CFG_LED_FLASH_GAP_MS     CFG_LED_DBL_GAP_MS

@@ -1,6 +1,6 @@
 # Peanut2Shield — TiVo Remote BLE HID Translator
 
-**Firmware v1.18** — see [CHANGELOG.md](CHANGELOG.md)
+**Firmware v1.20** — see [CHANGELOG.md](CHANGELOG.md)
 
 An ESP32-S3 firmware that bridges a **TiVo Stream 4K remote** to an **Nvidia Shield TV** over Bluetooth LE — no WiFi, no app, no cloud.
 
@@ -26,7 +26,7 @@ The ESP32-S3 simultaneously acts as:
 
 When a button is pressed on the TiVo remote, the firmware translates it (if needed) and forwards it to the Shield in real time.  Shield and TiVo bond addresses are stored in **NVS**; BLE keys persist across reboot when NimBLE bonding is enabled. After a normal reset or power cycle, the bridge **reconnects to both devices automatically** — Shield first (while advertising), then TiVo — and returns to **steady green** when both links are up.
 
-**Updating firmware:** use [PlatformIO](#building--flashing) (`pio run --target upload`). The first boot after flashing a **new version** clears pairing once — re-pair the Shield and TiVo remote. Re-flashing the same version keeps pairing.
+**Updating firmware:** easiest is the [prebuilt file from your browser](#flash-from-your-browser-no-install) — no software to install. Developers can use [PlatformIO](#building-from-source-platformio) (`pio run --target upload`). The first boot after flashing a **new version** clears pairing — re-pair the Shield and TiVo remote.
 
 ---
 
@@ -141,7 +141,7 @@ The reset itself takes well under a second. After the confirmation flashes the L
 | Skip | `0xCE00` | Keyboard F10 |
 | Netflix | `0x01C8` | Keyboard F11 |
 | Home | `0x0223` | Keyboard Home |
-| Back | `0x0224` | Keyboard ESC |
+| Back | `0x0224` | Keyboard ESC (Android Back when [long-press](#long-press-tivimate-etc) is on) |
 | OK / Select | `0x0041` | Consumer pass-through |
 | Power | `0x0030` | **Ignored over BLE by default** (`CFG_IGNORE_TIVO_POWER_BLE=1`) — use TiVo IR Power; set to `0` in `config.h` to forward to Shield |
 | Vol+ / Vol− / Mute | `0x00E9` / `0x00EA` / `0x00E2` | **Ignored over BLE by default** (`CFG_IGNORE_TIVO_VOLUME_BLE=1`) — use TiVo IR volume; set to `0` in `config.h` to forward to Shield |
@@ -151,6 +151,18 @@ The reset itself takes well under a second. After the confirmation flashes the L
 Keyboard-translated buttons get a forced **30 ms key-up pulse** so the Shield doesn't auto-repeat them.  Navigation keys skip the bounce guard and release immediately on all-zero idle reports from the TiVo's dual consumer characteristics, so directional repeat works naturally.  Identical-report hold dedup still applies to all keys.
 
 To launch apps or change what a button does on the Shield, use **[Button Mapper](#custom-button-mapping-shield-side)** (recommended).  To change what the bridge sends before it reaches the Shield, edit `CFG_DEFAULT_KEYMAP` in `src/config.h` and reflash.
+
+### Long-press (TiviMate, etc.)
+
+By default every press reaches the Shield as a **short tap**, even if you hold the button — so long-press actions (e.g. TiviMate: hold **Back** in the guide to jump back to full screen, hold **OK** for "Play in external player" / "Add to favorites") don't fire.
+
+To enable long-press, flash the **`longpress`** prebuilt file (see [Flash from your browser](#flash-from-your-browser-no-install)). If you build from source, set this in `src/config.h` instead and reflash:
+
+```c
+#define CFG_LONG_PRESS  1
+```
+
+With it on, buttons stay held on the Shield for as long as you hold them on the remote, and **Back** is sent as a real Android Back key instead of Esc. F-keys and Home still send a short tap (Button Mapper single-tap mappings are unaffected). Leave it at `0` if you don't use long-press — behaviour is then identical to earlier versions.
 
 **Power**, **Volume**, and **Mute** are ignored over BLE by default so they do not fight the TiVo remote’s IR (or CEC). See **[Power & volume via TiVo remote IR](#power--volume-via-tivo-remote-ir)** below. For **Input** or other IR-only keys, program IR on the remote the same way.
 
@@ -282,7 +294,7 @@ Power from a **wall USB adapter** (not Shield USB with a data cable). See [Power
 2. TiVo reconnects automatically once the Shield is linked (or after the 30 s window if the Shield stays asleep).
 3. **Steady green** = both ready; white flash on button press = keys reaching the Shield.
 
-**Power outage:** both units should come back to steady green on their own (fixed in v1.18). If one is still on **orange double-flash** after a minute while the remote works, press **RESET** once.
+**Power outage / Shield wake:** the bridge should come back to steady green on its own (fixed in v1.18 and v1.20). If one is still on **orange double-flash** after a minute while the remote works, press **RESET** once.
 
 If the LED is **solid purple** (not blinking), the board is hung on USB serial — move to wall power or a charge-only cable.
 
@@ -319,7 +331,36 @@ The source file `case/waveshare esp32-s3-zero_case.scad` is a parametric [OpenSC
 
 ## Building & flashing
 
-Firmware is built and flashed with **[PlatformIO](https://platformio.org/)** (CLI or VS Code extension) and a USB-C **data** cable.
+Two ways to put firmware on the board. Both need a USB-C **data** cable (charge-only cables won't work).
+
+### Flash from your browser (no install)
+
+Prebuilt files are in the [`firmware/`](firmware/) folder. Each is a complete image in a single file:
+
+| File | Use it if |
+|------|-----------|
+| `Peanut2Shield-v1.20-standard.bin` | Normal use — every press is a short tap (same as earlier versions) |
+| `Peanut2Shield-v1.20-longpress.bin` | You use long-press in apps like TiviMate (hold Back / hold OK) — see [Long-press](#long-press-tivimate-etc) |
+
+Works on **Windows, Mac, or Linux** with **Chrome** or **Edge** (Safari and Firefox can't talk to USB serial devices):
+
+1. Download the `.bin` file you want from [`firmware/`](firmware/).
+2. Plug the Peanut2Shield into the computer with a USB-C **data** cable.
+3. Open [espressif.github.io/esptool-js](https://espressif.github.io/esptool-js/).
+4. Click **Connect** and pick the board's port (Windows: `COMxx` / "USB JTAG/serial debug unit"; Mac: `usbmodem…`).
+5. Under **Program**, set **Flash Address** to `0x0`, choose the `.bin` file, and click **Program**.
+6. When it says it's done, unplug the board, plug it into its wall adapter, and press **RESET**.
+7. Pairing is cleared — pair the Shield first (purple slow blink), then the TiVo remote (orange double-flash). See [First-time pairing](#first-time-pairing).
+
+If **Connect** doesn't find the board: hold the **BOOT** button while plugging the board in, release it, then click **Connect** again.
+
+From a terminal instead of the browser: `esptool.py --chip esp32s3 write_flash 0x0 Peanut2Shield-v1.20-standard.bin`
+
+> Flashing a prebuilt file always clears pairing, even if it's the same version — the image overwrites the area where pairing is stored.
+
+### Building from source (PlatformIO)
+
+Firmware is built and flashed with **[PlatformIO](https://platformio.org/)** (CLI or VS Code extension).
 
 After any flash, press the board **RESET** button once. The ESP32-S3-Zero uses native USB-CDC, so upload does not always auto-reboot the chip.
 
@@ -355,10 +396,18 @@ pio device monitor -p COM20 -b 115200
 Good boot on serial:
 
 ```
-=== TiVo BLE HID Translator v1.18 ready ===
+=== TiVo BLE HID Translator v1.20 ready ===
 [BOOT] flash=4096 KB  PSRAM=2048 KB  heap=...
 [HID] Peripheral ready — advertising as 'Peanut2Shield'.
 ```
+
+**Rebuild the prebuilt files** in `firmware/` after changing the code or bumping `CFG_FIRMWARE_VERSION` (Windows PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File make-release.ps1
+```
+
+It builds the long-press and standard variants and writes `firmware/Peanut2Shield-<version>-longpress.bin` and `-standard.bin`, replacing the old ones. It builds standard last, so a following `pio run --target upload` flashes the default.
 
 On PC USB power, expect brief **yellow**, then **purple slow blink** if nothing is paired yet. Opening the serial monitor can change behaviour: with no reader, USB serial writes may **block** and freeze the LED (solid purple/yellow). Prefer wall power for normal TV use.
 
@@ -404,9 +453,9 @@ TiVo is connected but Shield is not. Wait up to ~30 s after reboot, wake the Shi
 
 The TiVo link is up but one of its report channels stopped delivering. v1.17+ repairs this automatically (reconnects the remote with its saved bond after Shield events, and re-subscribes every 5 minutes). If it still happens, press **BOOT 4 times** and re-pair that remote, and check its batteries.
 
-### Orange double-flash after a power outage, remote still works
+### Orange double-flash, but the remote still works
 
-Fixed in v1.18. On older firmware, press **RESET** once.
+The bridge lost track of a TiVo connection that was still alive. Fixed for power outages in v1.18 and for Shield sleep/wake in v1.20. On older firmware, press **RESET** once.
 
 ---
 
@@ -416,6 +465,10 @@ Fixed in v1.18. On older firmware, press **RESET** once.
 ├── CHANGELOG.md                # Version history
 ├── LICENSE                     # MIT license
 ├── flash-recover.bat           # Windows: erase + upload (recover crash loop)
+├── make-release.ps1            # Rebuild the prebuilt images in firmware/
+├── firmware/
+│   ├── Peanut2Shield-v1.20-standard.bin    # Prebuilt, flash at 0x0 (browser)
+│   └── Peanut2Shield-v1.20-longpress.bin   # Same, with long-press on
 ├── sdkconfig.defaults          # PSRAM / BLE memory settings for ESP32-S3-Zero
 ├── tivo_programming_codes.txt  # TiVo IR codes (power, vol, input, AV) if CEC fails
 ├── platformio.ini              # Board, platform, library dependencies

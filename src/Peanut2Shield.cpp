@@ -468,6 +468,8 @@ static void tryStartTiVoCentral() {
   if (tivoCentralBusy()) return;
   if (sTivoReady) return;
   if (sTivoRetryAt && millis() < sTivoRetryAt) return;
+  // A timed reconnect is already scheduled (see onDisconnect) — let it run.
+  if (sReconnectAt) return;
 
 #if !CFG_DEBUG_TIVO_ONLY
   // Let Shield finish CCCD + initial conn-param update before central work.
@@ -612,6 +614,9 @@ static size_t        sLastLen        = 0;
 static bool          sKeyIsDown      = false;
 static unsigned long sKeyDownAt      = 0;
 static unsigned long sKbReleaseAt    = 0;
+#if CFG_LONG_PRESS
+static unsigned long sLpReleaseAt    = 0;   // deferred consumer release (0 = none)
+#endif
 static unsigned long sShieldParamsAt = 0;
 static bool          sWasShieldReady = false;
 
@@ -638,6 +643,13 @@ void hidNotifyCallback(
                          sLastData[1] == 0x00);
       if (lastWasNav || millis() - sKeyDownAt >= kAllZeroGuardMs) {
         sKeyIsDown = false;
+#if CFG_LONG_PRESS
+        if (!lastWasNav) {
+          // Held keys: absorb the TiVo's up→down blip so the Shield sees one hold.
+          if (!sLpReleaseAt) sLpReleaseAt = millis() + CFG_LONG_PRESS_RELEASE_MS;
+          return;
+        }
+#endif
         hidReleaseConsumer();
       }
     }
@@ -645,6 +657,20 @@ void hidNotifyCallback(
   }
 
   unsigned long now = millis();
+
+#if CFG_LONG_PRESS
+  if (sLpReleaseAt) {
+    if (length == sLastLen && memcmp(pData, sLastData, length) == 0) {
+      // Same key back down inside the release window — hold continues.
+      sLpReleaseAt = 0;
+      sKeyIsDown   = true;
+      sKeyDownAt   = now;
+      return;
+    }
+    // Different key: its report replaces the held one on the Shield.
+    sLpReleaseAt = 0;
+  }
+#endif
 
   // Suppress hold-repeat: same data while key is physically held
   if (sKeyIsDown && length == sLastLen && memcmp(pData, sLastData, length) == 0) return;
@@ -756,6 +782,13 @@ class ClientCallbacks : public NimBLEClientCallbacks {
   }
 
   void onDisconnect(NimBLEClient* client) override {
+    if (pClient && client != pClient) {
+      // An old client dropping must not mark the current live link not-ready.
+      DEV_LOGLN("[Central] Stale TiVo client disconnected — ignored.");
+      sTivoSuppressReconnect = false;
+      NimBLEDevice::deleteClient(client);
+      return;
+    }
     unsigned long upMs =
         sTivoReadyAt ? (millis() - sTivoReadyAt) : 0;
     DEV_LOGF("[Central] Disconnected from TiVo remote (up %lu ms).\r\n", upMs);
@@ -901,6 +934,17 @@ static void tivoResubscribeTick() {
 // ---- Connect (pairing + GATT setup finish in onAuthenticationComplete) ----
 
 static bool tivoStartConnect(NimBLEAddress addr) {
+  // Never open a second connection on top of a live one: the old link keeps
+  // forwarding keys while the LED sticks on orange double-flash.
+  NimBLEClient* live = NimBLEDevice::getClientByPeerAddress(addr);
+  if (live && live->isConnected()) {
+    DEV_LOGLN("[Central] TiVo already connected — skipping duplicate connect.");
+    pClient         = live;
+    sTivoConnecting = false;
+    if (!sTivoReady) sTivoNeedSetup = true;  // re-run HID setup to mark ready
+    return true;
+  }
+
   sTivoConnecting    = true;
   sTivoReady         = false;
   sTivoPendingSecure = false;
@@ -1390,10 +1434,17 @@ void loop() {
     hidReleaseConsumer();  // no-op when consumer is already at zero
   }
 
+#if CFG_LONG_PRESS
+  if (sLpReleaseAt && millis() >= sLpReleaseAt) {
+    sLpReleaseAt = 0;
+    hidReleaseConsumer();
+  }
+#endif
+
   // ---- Timed reconnect after TiVo disconnect ----
   if (sReconnectAt && millis() >= sReconnectAt) {
     sReconnectAt = 0;
-    doConnect    = true;
+    if (!sTivoReady && !tivoCentralBusy()) doConnect = true;
   }
 
   if (doConnect) {

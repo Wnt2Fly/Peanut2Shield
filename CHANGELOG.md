@@ -3,9 +3,22 @@
 All notable firmware and documentation changes for Peanut2Shield.
 The firmware version lives in `CFG_FIRMWARE_VERSION` in `src/config.h`.
 
-> **Upgrading clears pairing once.** The first boot after flashing a *different* version erases NVS, so you re-pair the Shield and the TiVo remote one time. Re-flashing the *same* version keeps pairing.
+> **Upgrading clears pairing once.** The first boot after flashing a *different* version erases NVS, so you re-pair the Shield and the TiVo remote one time. Re-flashing the *same* version with PlatformIO keeps pairing; flashing a prebuilt single-file image always clears it.
 
 ---
+
+## v1.20 — 2026-10-06
+
+### Added
+- **Prebuilt firmware in the repo** (`firmware/`): `Peanut2Shield-v1.20-standard.bin` and `Peanut2Shield-v1.20-longpress.bin`. Each is a complete single-file image that flashes at address `0x0` from Chrome/Edge ([esptool-js](https://espressif.github.io/esptool-js/)) on Windows, Mac, or Linux — no PlatformIO needed.
+- **`make-release.ps1`** rebuilds both images from source.
+- **Optional long-press pass-through** (`CFG_LONG_PRESS`, **off by default**; the `longpress` image has it on). Buttons stay held on the Shield for as long as they are held on the remote, so apps like TiviMate see long-presses (long Back to jump back to full screen, long OK for "Play in external player" / "Add to favorites"). Back is sent as Android Back instead of Esc in this mode. F-keys and Home keep the short tap. With the default `0`, button behaviour is unchanged from v1.18. Can also be set at build time with `-DCFG_LONG_PRESS=1`.
+
+### Fixed
+- **Orange double-flash while the remote still works (after Shield sleep/wake).** A TiVo disconnect scheduled a reconnect for 3 s later, but the main loop also reconnected immediately. When the timer then fired, a second connection was started on top of the live one: the old link kept forwarding keys, while the bridge marked the TiVo "not ready" and retried every couple of seconds. Now:
+  - the scheduled 3 s reconnect is the only reconnect path,
+  - a reconnect is skipped if the TiVo is already connected (HID setup is re-run instead),
+  - a disconnect from an old, replaced client no longer marks the current link not-ready.
 
 ## v1.18 — 2026-09-10
 

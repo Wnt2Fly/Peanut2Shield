@@ -1,0 +1,14 @@
+﻿{
+  "name": "Peanut2Shield standard",
+  "version": "1.21",
+  "new_install_prompt_erase": true,
+  "builds": [{
+    "chipFamily": "ESP32-S3",
+    "parts": [
+      { "path": "../parts/standard/bootloader.bin", "offset": 0 },
+      { "path": "../parts/standard/partitions.bin", "offset": 32768 },
+      { "path": "../parts/standard/boot_app0.bin", "offset": 57344 },
+      { "path": "../parts/standard/firmware.bin", "offset": 65536 }
+    ]
+  }]
+}

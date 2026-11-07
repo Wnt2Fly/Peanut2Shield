@@ -15,12 +15,13 @@ The firmware version lives in `CFG_FIRMWARE_VERSION` in `src/config.h`.
 
 ### Added
 - **Safety release in long-press mode** (`CFG_LONG_PRESS_MAX_HOLD_MS`, 3 s): a held key is always released on the Shield after 3 s, even if the remote's key-up is lost.
+- **Public one-click flasher** (no download, no you on the phone): `docs/` is served as GitHub Pages at **https://wnt2fly.github.io/Peanut2Shield/** ([ESP Web Tools](https://esphome.github.io/esp-web-tools/)). Also `firmware/parts/` four-file sets. **Do not** flash the merged `Peanut2Shield-*.bin` with esptool-js on this board — it can verify OK then USB-beep crash-loop. `make-release.ps1` rebuilds `docs/`, `firmware/parts/`, and merged images.
 
 ## v1.20 — 2026-10-06
 
 ### Added
-- **Prebuilt firmware in the repo** (`firmware/`): `Peanut2Shield-v1.20-standard.bin` and `Peanut2Shield-v1.20-longpress.bin`. Each is a complete single-file image that flashes at address `0x0` from Chrome/Edge ([esptool-js](https://espressif.github.io/esptool-js/)) on Windows, Mac, or Linux — no PlatformIO needed.
-- **`make-release.ps1`** rebuilds both images from source.
+- **Prebuilt firmware in the repo** (`firmware/`): merged `Peanut2Shield-v1.20-*.bin` images (CLI / advanced). Browser flashing for this board was later switched to the four-file / web installer in v1.21 — don’t use the merged file in esptool-js.
+- **`make-release.ps1`** rebuilds release images from source.
 - **Optional long-press pass-through** (`CFG_LONG_PRESS`, **off by default**; the `longpress` image has it on). Buttons stay held on the Shield for as long as they are held on the remote, so apps like TiviMate see long-presses (long Back to jump back to full screen, long OK for "Play in external player" / "Add to favorites"). Back is sent as Android Back instead of Esc in this mode. F-keys and Home keep the short tap. With the default `0`, button behaviour is unchanged from v1.18. Can also be set at build time with `-DCFG_LONG_PRESS=1`.
 
 ### Fixed

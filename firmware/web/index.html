@@ -1,0 +1,38 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Peanut2Shield flasher</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 36rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.45; }
+    h1 { font-size: 1.4rem; }
+    .card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem 1.1rem; margin: 1rem 0; }
+    .note { color: #444; font-size: 0.95rem; }
+    a { color: #0b57d0; }
+  </style>
+</head>
+<body>
+  <h1>Peanut2Shield flasher</h1>
+  <p class="note">Firmware <b>v1.21</b>. Use <b>Chrome</b> or <b>Edge</b> and a USB-C <b>data</b> cable.
+  After install: close this tab, unplug, plug into a <b>wall USB</b> adapter, press <b>RESET</b>.
+  Expect yellow, then purple blink. Then pair Shield, then TiVo remote.</p>
+
+  <div class="card">
+    <h2>Standard</h2>
+    <p>Normal short taps. Use this unless you need TiviMate long-press.</p>
+    <esp-web-install-button manifest="./manifest-standard.json"></esp-web-install-button>
+  </div>
+
+  <div class="card">
+    <h2>Long-press</h2>
+    <p>Hold Back / OK for TiviMate.</p>
+    <esp-web-install-button manifest="./manifest-longpress.json"></esp-web-install-button>
+  </div>
+
+  <p class="note">If Connect fails: hold <b>BOOT</b>, plug in, release, try again.
+  If the PC beeps / reconnects: close this page, hold BOOT, install again, then wall power + RESET.
+  Project: <a href="https://github.com/Wnt2Fly/Peanut2Shield">github.com/Wnt2Fly/Peanut2Shield</a></p>
+</body>
+</html>

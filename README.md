@@ -26,7 +26,9 @@ The ESP32-S3 simultaneously acts as:
 
 When a button is pressed on the TiVo remote, the firmware translates it (if needed) and forwards it to the Shield in real time.  Shield and TiVo bond addresses are stored in **NVS**; BLE keys persist across reboot when NimBLE bonding is enabled. After a normal reset or power cycle, the bridge **reconnects to both devices automatically** — Shield first (while advertising), then TiVo — and returns to **steady green** when both links are up.
 
-**Updating firmware:** easiest is the [prebuilt file from your browser](#flash-from-your-browser-no-install) — no software to install. Developers can use [PlatformIO](#building-from-source-platformio) (`pio run --target upload`). The first boot after flashing a **new version** clears pairing — re-pair the Shield and TiVo remote.
+**Updating firmware:** open the public flasher — no download, no PlatformIO:  
+**https://wnt2fly.github.io/Peanut2Shield/**  
+(Chrome/Edge + USB-C data cable → Connect → Standard or Long-press → wall USB → RESET). Details: [Flash from your browser](#flash-from-your-browser-no-install). Developers can also use [PlatformIO](#building-from-source-platformio). The first boot after a **new version** clears pairing — re-pair Shield, then TiVo.
 
 ---
 
@@ -156,7 +158,7 @@ To launch apps or change what a button does on the Shield, use **[Button Mapper]
 
 By default every press reaches the Shield as a **short tap**, even if you hold the button — so long-press actions (e.g. TiviMate: hold **Back** in the guide to jump back to full screen, hold **OK** for "Play in external player" / "Add to favorites") don't fire.
 
-To enable long-press, flash the **`longpress`** prebuilt file (see [Flash from your browser](#flash-from-your-browser-no-install)). If you build from source, set this in `src/config.h` instead and reflash:
+To enable long-press, use the **Long-press** button on the [browser flasher](#flash-from-your-browser-no-install) (or flash `firmware/parts/longpress/`). If you build from source, set this in `src/config.h` instead and reflash:
 
 ```c
 #define CFG_LONG_PRESS  1
@@ -335,28 +337,61 @@ Two ways to put firmware on the board. Both need a USB-C **data** cable (charge-
 
 ### Flash from your browser (no install)
 
-Prebuilt files are in the [`firmware/`](firmware/) folder. Each is a complete image in a single file:
+Use **Chrome** or **Edge** (not Safari/Firefox) and a USB-C **data** cable.
 
-| File | Use it if |
-|------|-----------|
-| `Peanut2Shield-v1.21-standard.bin` | Normal use — every press is a short tap (same as earlier versions) |
-| `Peanut2Shield-v1.21-longpress.bin` | You use long-press in apps like TiviMate (hold Back / hold OK) — see [Long-press](#long-press-tivimate-etc) |
+| Variant | Use it if |
+|---------|-----------|
+| **Standard** | Normal short taps |
+| **Long-press** | TiviMate long-press Back / OK — see [Long-press](#long-press-tivimate-etc) |
 
-Works on **Windows, Mac, or Linux** with **Chrome** or **Edge** (Safari and Firefox can't talk to USB serial devices):
+> **Do not** Program the single merged `Peanut2Shield-*.bin` in [esptool-js](https://espressif.github.io/esptool-js/). It often says “hash verified” then the board USB-beep crash-loops with no LED. The one-click page and the four-file method below flash the same way PlatformIO does.
 
-1. Download the `.bin` file you want from [`firmware/`](firmware/).
-2. Plug the Peanut2Shield into the computer with a USB-C **data** cable.
-3. Open [espressif.github.io/esptool-js](https://espressif.github.io/esptool-js/).
-4. Click **Connect** and pick the board's port (Windows: `COMxx` / "USB JTAG/serial debug unit"; Mac: `usbmodem…`).
-5. Under **Program**, set **Flash Address** to `0x0`, choose the `.bin` file, and click **Program**.
-6. When it says it's done, unplug the board, plug it into its wall adapter, and press **RESET**.
-7. Pairing is cleared — pair the Shield first (purple slow blink), then the TiVo remote (orange double-flash). See [First-time pairing](#first-time-pairing).
+#### One-click installer (recommended)
 
-If **Connect** doesn't find the board: hold the **BOOT** button while plugging the board in, release it, then click **Connect** again.
+**Anyone (no you required):** open this page on their own PC:
 
-From a terminal instead of the browser: `esptool.py --chip esp32s3 write_flash 0x0 Peanut2Shield-v1.21-standard.bin`
+### → [https://wnt2fly.github.io/Peanut2Shield/](https://wnt2fly.github.io/Peanut2Shield/)
 
-> Flashing a prebuilt file always clears pairing, even if it's the same version — the image overwrites the area where pairing is stored.
+1. Chrome or Edge, USB-C **data** cable, plug in the board.
+2. **Connect** → pick the port → install **Standard** (or **Long-press** for TiviMate holds).
+3. Close the tab, unplug, **wall USB**, press **RESET**.
+4. Yellow → purple blink → pair Shield, then TiVo.
+
+They do **not** download a `.bin`. The page flashes the board over USB.
+
+If **Connect** fails: hold **BOOT**, plug in, release, try Connect again.
+
+**Local test before Pages is live** (or offline):
+
+```powershell
+python -m http.server 8080 --directory docs
+```
+
+Then open **http://localhost:8080/**
+
+**GitHub Pages setup (one-time, repo owner):** Settings → Pages → Source = Deploy from branch → Branch `master` (or `main`), folder **`/docs`** → Save. After the first push of `docs/`, the public URL above works for everyone.
+
+#### Manual four-file flash (esptool-js)
+
+Same images as the one-click installer, entered by hand:
+
+1. Download the four files from [`firmware/parts/standard/`](firmware/parts/standard/) (or `longpress/`).
+2. Open [espressif.github.io/esptool-js](https://espressif.github.io/esptool-js/) → **Connect**.
+3. Set **Flash Mode `qio`**, **Freq `80MHz`**, **Size `4MB`**, **Erase all** checked. Do **not** leave Mode/Freq/Size on `keep`.
+4. Add **four** program rows:
+
+| Address | File |
+|---------|------|
+| `0x0` | `bootloader.bin` |
+| `0x8000` | `partitions.bin` |
+| `0xe000` | `boot_app0.bin` |
+| `0x10000` | `firmware.bin` |
+
+5. **Program** → wait for verified → **Disconnect** / close tab → wall USB → **RESET**.
+
+**If the PC beeps / reconnects** (crash loop, no LED): close the browser, hold **BOOT**, Connect, use the **one-click** or **four-file** method again (not the merged `.bin`), then wall + RESET. On a dev PC: `flash-recover.bat COM<N>`.
+
+> Browser / four-file flashing clears pairing — re-pair Shield, then TiVo.
 
 ### Building from source (PlatformIO)
 
@@ -401,13 +436,13 @@ Good boot on serial:
 [HID] Peripheral ready — advertising as 'Peanut2Shield'.
 ```
 
-**Rebuild the prebuilt files** in `firmware/` after changing the code or bumping `CFG_FIRMWARE_VERSION` (Windows PowerShell):
+**Rebuild the prebuilt files** after changing the code or bumping `CFG_FIRMWARE_VERSION` (Windows PowerShell):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File make-release.ps1
 ```
 
-It builds the long-press and standard variants and writes `firmware/Peanut2Shield-<version>-longpress.bin` and `-standard.bin`, replacing the old ones. It builds standard last, so a following `pio run --target upload` flashes the default.
+That refreshes `docs/` (public GitHub Pages flasher), `firmware/parts/`, `firmware/web/`, and the merged `Peanut2Shield-<version>-*.bin` files (CLI / advanced only). It builds standard last, so a following `pio run --target upload` flashes the default.
 
 On PC USB power, expect brief **yellow**, then **purple slow blink** if nothing is paired yet. Opening the serial monitor can change behaviour: with no reader, USB serial writes may **block** and freeze the LED (solid purple/yellow). Prefer wall power for normal TV use.
 
@@ -421,6 +456,7 @@ On PC USB power, expect brief **yellow**, then **purple slow blink** if nothing 
 |---------|----------------|-----|
 | Yellow **~1–2 s**, then purple **blink** | Normal boot | Pair Shield if new; ignore if already green behind TV |
 | Yellow **forever** or keeps restarting | BLE crash loop (`ESP_ERR_NO_MEM` on serial) | **`flash-recover.bat COM<N>`** or `pio run -t erase` then upload |
+| PC **beeps / USB reconnect loop**, LED never lights after browser flash | Merged single `.bin` via esptool-js, or flasher still holding the COM port | Close the browser tab; flash with the [one-click `/web/` installer](#flash-from-your-browser-no-install) or four files; wall USB + RESET. Dev: `flash-recover.bat COM<N>` |
 | **Solid purple** (not blinking) after power cycle | USB host enumerated serial but nothing reads it (Shield USB / PC without monitor) | Power from a **wall USB adapter**; avoid Shield USB. Optional: charge-only cable if you must use Shield power |
 | Resets or forgets bonds by itself | BOOT button stuck or case pressing it | Check the case isn’t pressing BOOT |
 | **Red** slow blink | No PSRAM on chip | Wrong board — need **Waveshare ESP32-S3-Zero (FH4R2)** with 2 MB PSRAM |
@@ -465,10 +501,15 @@ The bridge lost track of a TiVo connection that was still alive. Fixed for power
 ├── CHANGELOG.md                # Version history
 ├── LICENSE                     # MIT license
 ├── flash-recover.bat           # Windows: erase + upload (recover crash loop)
-├── make-release.ps1            # Rebuild the prebuilt images in firmware/
+├── make-release.ps1            # Rebuild prebuilt images + docs flasher
+├── docs/                       # GitHub Pages → https://wnt2fly.github.io/Peanut2Shield/
+│   ├── index.html
+│   └── parts/standard|longpress/
 ├── firmware/
-│   ├── Peanut2Shield-v1.21-standard.bin    # Prebuilt, flash at 0x0 (browser)
-│   └── Peanut2Shield-v1.21-longpress.bin   # Same, with long-press on
+│   ├── web/                        # Local mirror of the flasher
+│   ├── parts/standard|longpress/   # Same four-file sets
+│   ├── Peanut2Shield-v1.21-standard.bin    # Merged — CLI only, not esptool-js
+│   └── Peanut2Shield-v1.21-longpress.bin
 ├── sdkconfig.defaults          # PSRAM / BLE memory settings for ESP32-S3-Zero
 ├── tivo_programming_codes.txt  # TiVo IR codes (power, vol, input, AV) if CEC fails
 ├── platformio.ini              # Board, platform, library dependencies
